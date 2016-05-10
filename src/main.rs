@@ -13,14 +13,22 @@ mod configuration;
 #[derive(Debug)]
 struct BarItem {
     path: PathBuf,
-    duration: usize,
+    duration: Option<u64>,
 }
 
-fn execute_script(script: BarItem, sender: Sender<Vec<u8>>,) {
-    loop {
-        let output = Command::new(&script.path).output().unwrap();
-        let _ = sender.send(output.stdout.to_owned());
-        sleep(Duration::from_secs(script.duration as u64));
+fn execute_script(script: BarItem, _: Sender<Vec<u8>>,) {
+    let path = &script.path;
+    match script.duration {
+        Some(time) => {
+            loop {
+                let output = Command::new(path).spawn().unwrap();
+                // let _ = sender.send(output.stdout);
+                sleep(Duration::from_secs(time));
+            }
+        },
+        None => {
+            let output = Command::new(path).spawn().unwrap();
+        },
     }
 }
 
@@ -36,7 +44,7 @@ fn main() {
     for (key, value) in config_toml {
         let script = BarItem {
             path: PathBuf::from(value.as_table().unwrap().get("path").unwrap().as_str().unwrap()),
-            duration: value.as_table().unwrap().get("time").unwrap().as_integer().unwrap() as usize,
+            duration: value.as_table().unwrap().get("reload").and_then(|x| x.as_integer()).map(|x| x as u64),
         };
 
         let clone = sender.clone();
