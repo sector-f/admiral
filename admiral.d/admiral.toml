@@ -1,7 +1,7 @@
 [foo]
-path = "/home/adam/.config/admiral.d/foo.sh"
+path = "foo.sh"
 reload = 1
 
 [bar]
-path = "/home/adam/.config/admiral.d/bar.sh"
+path = "bar.sh"
 reload = 5
