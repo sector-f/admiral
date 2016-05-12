@@ -1,3 +1,6 @@
+[admiral]
+items = ["loop", "foo", "baz", "bar"]
+
 [foo]
 path = "foo.sh"
 reload = 1
@@ -5,3 +8,10 @@ reload = 1
 [bar]
 path = "bar.sh"
 reload = 5
+
+[loop]
+path = "loop.sh"
+
+[unused]
+path = "unused.sh"
+reload = 60

@@ -1,7 +1,7 @@
 extern crate toml;
 
-use std::process::{Command, exit};
-use std::io::{stdout, Write, Read};
+use std::process::{Command, exit, Stdio};
+use std::io::{stderr, stdout, Write, Read, BufRead, BufReader};
 use std::sync::mpsc::{channel, Sender};
 use std::fs::File;
 use std::path::PathBuf;
@@ -14,9 +14,10 @@ mod configuration;
 struct BarItem {
     path: PathBuf,
     duration: Option<u64>,
+    position: u32,
 }
 
-fn execute_script(dir: PathBuf, script: BarItem, _: Sender<Vec<u8>>,) {
+fn execute_script(dir: PathBuf, script: BarItem, sender: Sender<Vec<u8>>,) {
     let path = if script.path.is_relative() {
         dir.join(script.path)
     } else {
@@ -25,13 +26,17 @@ fn execute_script(dir: PathBuf, script: BarItem, _: Sender<Vec<u8>>,) {
     match script.duration {
         Some(time) => {
             loop {
-                let output = Command::new(&path).spawn().unwrap();
-                // let _ = sender.send(output.stdout);
+                let output = Command::new(&path).output().unwrap();
+                let _ = sender.send(output.stdout);
                 sleep(Duration::from_secs(time));
             }
         },
         None => {
-            let output = Command::new(&path).spawn().unwrap();
+            let output = Command::new(&path).stdout(Stdio::piped()).spawn().unwrap();
+            let reader = BufReader::new(output.stdout.unwrap());
+            for line in reader.lines() {
+                let _ = sender.send(format!("{}\n", line.unwrap()).into_bytes());
+            }
         },
     }
 }
@@ -52,20 +57,35 @@ fn main() {
 
     let config_toml = toml::Parser::new(&buffer).parse().unwrap();
 
+    let admiral_config = config_toml.get("admiral").unwrap();
+    let items = admiral_config.as_table().unwrap().get("items").unwrap().as_slice().unwrap().iter().map(|x| x.as_str().unwrap()).collect::<Vec<_>>();
+
     let (sender, receiver) = channel::<Vec<u8>>();
 
-    for (_key, value) in config_toml {
-        let script = BarItem {
-            path: PathBuf::from(value.as_table().unwrap().get("path").unwrap().as_str().unwrap()),
-            duration: value.as_table().unwrap().get("reload").and_then(|x| x.as_integer()).map(|x| x as u64),
-        };
+    let mut position: u32 = 0;
+    for value in items {
+        match config_toml.get(value) {
+            Some(script) => {
+                let command = BarItem {
+                    path: PathBuf::from(script.as_table().unwrap().get("path").unwrap().as_str().unwrap()),
+                    duration: script.as_table().unwrap().get("reload").and_then(|x| x.as_integer()).map(|x| x as u64),
+                    position: position,
+                };
 
-        // Annoying stuff because of how ownership works with closures
-        let clone = sender.clone();
-        let config_directory = config_directory.to_owned();
-        let _ = thread::spawn(move || {
-            execute_script(config_directory, script, clone);
-        });
+                position += 1;
+
+                // Annoying stuff because of how ownership works with closures
+                let clone = sender.clone();
+                let config_directory = config_directory.to_owned();
+                let _ = thread::spawn(move || {
+                    execute_script(config_directory, command, clone);
+                });
+            },
+            None => {
+                stderr().write(format!("No {} found\n", value).as_bytes());
+                continue;
+            },
+        }
     }
 
     for line in receiver.iter() {
