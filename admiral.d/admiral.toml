@@ -1,20 +1,9 @@
 [admiral]
-items = ["ls", "loop", "foo", "baz", "bar"]
+items = ["title", "clock"]
 
-[foo]
-path = "foo.sh"
+[title]
+path = "title.sh"
+
+[clock]
+path = "clock.sh"
 reload = 1
-
-[bar]
-path = "bar.sh"
-reload = 5
-
-[ls]
-path = ["/usr/bin/ls", "--version"]
-
-[loop]
-path = "loop.sh"
-
-[unused]
-path = "unused.sh"
-reload = 60
