@@ -1,5 +1,5 @@
 [admiral]
-items = ["loop", "foo", "baz", "bar"]
+items = ["ls", "loop", "foo", "baz", "bar"]
 
 [foo]
 path = "foo.sh"
@@ -8,6 +8,9 @@ reload = 1
 [bar]
 path = "bar.sh"
 reload = 5
+
+[ls]
+path = ["/usr/bin/ls", "--version"]
 
 [loop]
 path = "loop.sh"
