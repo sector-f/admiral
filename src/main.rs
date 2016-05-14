@@ -20,9 +20,15 @@ struct BarItem {
     position: u32,
 }
 
-fn execute_script(dir: PathBuf, script: BarItem, sender: Sender<Vec<u8>>,) {
+#[derive(Debug)]
+struct Update {
+    position: u32,
+    message: Vec<u8>,
+}
+
+fn execute_script(config_file: PathBuf, script: BarItem, sender: Sender<Update>,) {
     let path = if PathBuf::from(&script.path[0]).is_relative() {
-        PathBuf::from(dir.join(&script.path[0]))
+        PathBuf::from(config_file.parent().unwrap().join(&script.path[0]))
     } else {
         PathBuf::from(&script.path[0])
     };
@@ -33,7 +39,7 @@ fn execute_script(dir: PathBuf, script: BarItem, sender: Sender<Vec<u8>>,) {
         Some(time) => {
             loop {
                 let output = Command::new(&path).args(arguments).output().expect(&format!("Failed to run {}", path.display()));
-                let _ = sender.send(output.stdout);
+                let _ = sender.send(Update { position: script.position, message: output.stdout, });
                 sleep(Duration::from_secs(time));
             }
         },
@@ -41,7 +47,7 @@ fn execute_script(dir: PathBuf, script: BarItem, sender: Sender<Vec<u8>>,) {
             let output = Command::new(&path).args(arguments).stdout(Stdio::piped()).spawn().expect(&format!("Failed to run {}", path.display()));
             let reader = BufReader::new(output.stdout.unwrap());
             for line in reader.lines() {
-                let _ = sender.send(format!("{}\n", line.unwrap()).into_bytes());
+                let _ = sender.send(Update { position: script.position, message: format!("{}\n", line.unwrap()).into_bytes() });
             }
         },
     }
@@ -49,28 +55,34 @@ fn execute_script(dir: PathBuf, script: BarItem, sender: Sender<Vec<u8>>,) {
 
 fn main() {
     let matches = App::new("admiral")
-        .arg(Arg::with_name("directory")
-             .help("Specify alternate config directory")
-             .short("d")
-             .long("directory")
+        .arg(Arg::with_name("config")
+             .help("Specify alternate config file")
+             .short("c")
+             .long("config-file")
              .takes_value(true))
         .get_matches();
 
-    let config_directory = match matches.value_of("directory") {
-        Some(dir) => PathBuf::from(dir),
+    let config_file = match matches.value_of("config") {
+        Some(file) => PathBuf::from(file),
         None => {
-            match configuration::get_config_directory() {
+            match configuration::get_config_file() {
                 Some(file) => file,
                 None => {
-                    let _ = stderr().write("Configuration directory not found\n".as_bytes());
+                    let _ = stderr().write("Configuration file not found\n".as_bytes());
                     exit(1);
                 },
             }
         }
     };
 
+    if ! config_file.is_file() {
+        let _ = stderr().write("Invalid configuration file specified\n".as_bytes());
+        exit(1);
+    }
+
+
     let mut buffer = String::new();
-    if let Ok(mut file) = File::open(config_directory.join("admiral.toml")) {
+    if let Ok(mut file) = File::open(&config_file) {
         file.read_to_string(&mut buffer).expect("Could not read configuration file");
     }
 
@@ -79,7 +91,7 @@ fn main() {
     let admiral_config = config_toml.get("admiral").unwrap();
     let items = admiral_config.as_table().unwrap().get("items").unwrap().as_slice().unwrap().iter().map(|x| x.as_str().unwrap()).collect::<Vec<_>>();
 
-    let (sender, receiver) = channel::<Vec<u8>>();
+    let (sender, receiver) = channel::<Update>();
 
     let mut position: u32 = 0;
     for value in items {
@@ -114,9 +126,9 @@ fn main() {
 
                 // Annoying stuff because of how ownership works with closures
                 let clone = sender.clone();
-                let config_directory = config_directory.to_owned();
+                let config_file = config_file.to_owned();
                 let _ = thread::spawn(move || {
-                    execute_script(config_directory, command, clone);
+                    execute_script(config_file, command, clone);
                 });
             },
             None => {
@@ -127,6 +139,6 @@ fn main() {
     }
 
     for line in receiver.iter() {
-        let _ = stdout().write(&line).unwrap();
+        let _ = stdout().write(&line.message).unwrap();
     }
 }
