@@ -30,7 +30,6 @@ reload = 60
 ````
 
 The first section is `[admiral]`; this is used to specify the order of the scripts.
-At least, it will be. The `BarItem` struct does have a `position` field, but I'm not doing anything with it.
 Note that an error is printed about the "baz" command not existing.
 Any item not listed in the `items` array will be unused.
 

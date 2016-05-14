@@ -17,13 +17,13 @@ mod configuration;
 struct BarItem {
     path: Vec<String>,
     duration: Option<u64>,
-    position: u32,
+    position: usize,
 }
 
 #[derive(Debug)]
 struct Update {
-    position: u32,
-    message: Vec<u8>,
+    position: usize,
+    message: String,
 }
 
 fn execute_script(config_file: PathBuf, script: BarItem, sender: Sender<Update>,) {
@@ -39,7 +39,7 @@ fn execute_script(config_file: PathBuf, script: BarItem, sender: Sender<Update>,
         Some(time) => {
             loop {
                 let output = Command::new(&path).args(arguments).output().expect(&format!("Failed to run {}", path.display()));
-                let _ = sender.send(Update { position: script.position, message: output.stdout, });
+                let _ = sender.send(Update { position: script.position, message: String::from_utf8_lossy(&output.stdout).into_owned().trim().to_owned(), });
                 sleep(Duration::from_secs(time));
             }
         },
@@ -47,7 +47,7 @@ fn execute_script(config_file: PathBuf, script: BarItem, sender: Sender<Update>,
             let output = Command::new(&path).args(arguments).stdout(Stdio::piped()).spawn().expect(&format!("Failed to run {}", path.display()));
             let reader = BufReader::new(output.stdout.unwrap());
             for line in reader.lines() {
-                let _ = sender.send(Update { position: script.position, message: format!("{}\n", line.unwrap()).into_bytes() });
+                let _ = sender.send(Update { position: script.position, message: line.unwrap().trim().to_owned(), });
             }
         },
     }
@@ -93,7 +93,10 @@ fn main() {
 
     let (sender, receiver) = channel::<Update>();
 
-    let mut position: u32 = 0;
+    let mut message_vec: Vec<String> = Vec::new();
+    let mut print_message = String::new();
+
+    let mut position: usize = 0;
     for value in items {
         match config_toml.get(value) {
             Some(script) => {
@@ -130,6 +133,8 @@ fn main() {
                 let _ = thread::spawn(move || {
                     execute_script(config_file, command, clone);
                 });
+
+                message_vec.push(String::new());
             },
             None => {
                 let _ = stderr().write(format!("No {} found\n", value).as_bytes());
@@ -139,6 +144,11 @@ fn main() {
     }
 
     for line in receiver.iter() {
-        let _ = stdout().write(&line.message).unwrap();
+        let position = line.position;
+        message_vec[position] = line.message;
+        if print_message != message_vec.iter().cloned().collect::<String>() {
+            print_message = message_vec.iter().cloned().collect::<String>();
+            println!("{}", print_message);
+        }
     }
 }
