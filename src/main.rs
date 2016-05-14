@@ -1,4 +1,5 @@
 extern crate toml;
+extern crate clap;
 
 use std::process::{Command, exit, Stdio};
 use std::io::{stderr, stdout, Write, Read, BufRead, BufReader};
@@ -7,6 +8,8 @@ use std::fs::File;
 use std::path::PathBuf;
 use std::thread::{self, sleep};
 use std::time::Duration;
+
+use clap::{App, Arg};
 
 mod configuration;
 
@@ -29,13 +32,13 @@ fn execute_script(dir: PathBuf, script: BarItem, sender: Sender<Vec<u8>>,) {
     match script.duration {
         Some(time) => {
             loop {
-                let output = Command::new(&path).args(arguments).output().unwrap();
+                let output = Command::new(&path).args(arguments).output().expect(&format!("Failed to run {}", path.display()));
                 let _ = sender.send(output.stdout);
                 sleep(Duration::from_secs(time));
             }
         },
         None => {
-            let output = Command::new(&path).args(arguments).stdout(Stdio::piped()).spawn().unwrap();
+            let output = Command::new(&path).args(arguments).stdout(Stdio::piped()).spawn().expect(&format!("Failed to run {}", path.display()));
             let reader = BufReader::new(output.stdout.unwrap());
             for line in reader.lines() {
                 let _ = sender.send(format!("{}\n", line.unwrap()).into_bytes());
@@ -45,15 +48,28 @@ fn execute_script(dir: PathBuf, script: BarItem, sender: Sender<Vec<u8>>,) {
 }
 
 fn main() {
-    let mut buffer = String::new();
-    let config_directory = match configuration::get_config_directory() {
-        Some(file) => file,
+    let matches = App::new("admiral")
+        .arg(Arg::with_name("directory")
+             .help("Specify alternate config directory")
+             .short("d")
+             .long("directory")
+             .takes_value(true))
+        .get_matches();
+
+    let config_directory = match matches.value_of("directory") {
+        Some(dir) => PathBuf::from(dir),
         None => {
-            println!("Configuration directory not found");
-            exit(1);
-        },
+            match configuration::get_config_directory() {
+                Some(file) => file,
+                None => {
+                    let _ = stderr().write("Configuration directory not found\n".as_bytes());
+                    exit(1);
+                },
+            }
+        }
     };
 
+    let mut buffer = String::new();
     if let Ok(mut file) = File::open(config_directory.join("admiral.toml")) {
         file.read_to_string(&mut buffer).expect("Could not read configuration file");
     }

@@ -1,7 +1,8 @@
 Alright, here's what there is so far:
 
 `admiral.d` goes in `XDG_CONFIG_HOME` or `$HOME/.config`.
-This directory contains a number of scripts, as well as the `admiral.toml` file.
+Alternatively, a configuration directory can be specified with the `-d` flag.
+A file named `admiral.toml` is looked for in the configuration directory.
 Let's look at it.
 
 ````
