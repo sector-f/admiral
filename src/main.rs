@@ -2,7 +2,7 @@ extern crate toml;
 extern crate clap;
 
 use std::process::{Command, exit, Stdio};
-use std::io::{stderr, stdout, Write, Read, BufRead, BufReader};
+use std::io::{stderr, Write, Read, BufRead, BufReader};
 use std::sync::mpsc::{channel, Sender};
 use std::fs::File;
 use std::path::PathBuf;
@@ -40,7 +40,7 @@ fn execute_script(config_file: PathBuf, script: BarItem, sender: Sender<Update>,
             loop {
                 let output = Command::new(&path).args(arguments).output().expect(&format!("Failed to run {}", path.display()));
                 let _ = sender.send(Update { position: script.position, message: String::from_utf8_lossy(&output.stdout).trim().to_owned(), });
-                sleep(Duration::from_secs(time));
+                sleep(Duration::from_millis(time));
             }
         },
         None => {
