@@ -39,15 +39,18 @@ fn execute_script(config_file: PathBuf, script: BarItem, sender: Sender<Update>,
         Some(time) => {
             loop {
                 let output = Command::new(&path).args(arguments).output().expect(&format!("Failed to run {}", path.display()));
-                let _ = sender.send(Update { position: script.position, message: String::from_utf8_lossy(&output.stdout).into_owned().trim().to_owned(), });
+                let _ = sender.send(Update { position: script.position, message: String::from_utf8_lossy(&output.stdout).trim().to_owned(), });
                 sleep(Duration::from_secs(time));
             }
         },
         None => {
-            let output = Command::new(&path).args(arguments).stdout(Stdio::piped()).spawn().expect(&format!("Failed to run {}", path.display()));
-            let reader = BufReader::new(output.stdout.unwrap());
-            for line in reader.lines() {
-                let _ = sender.send(Update { position: script.position, message: line.unwrap().trim().to_owned(), });
+            loop {
+                let output = Command::new(&path).args(arguments).stdout(Stdio::piped()).spawn().expect(&format!("Failed to run {}", path.display()));
+                let reader = BufReader::new(output.stdout.unwrap());
+                for line in reader.lines().flat_map(Result::ok) {
+                    let _ = sender.send(Update { position: script.position, message: line.trim().to_owned(), });
+                }
+                sleep(Duration::from_millis(10));
             }
         },
     }
@@ -148,6 +151,7 @@ fn main() {
         message_vec[position] = line.message;
         if print_message != message_vec.iter().cloned().collect::<String>() {
             print_message = message_vec.iter().cloned().collect::<String>();
+            sleep(Duration::from_millis(5));
             println!("{}", print_message);
         }
     }
