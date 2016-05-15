@@ -56,6 +56,14 @@ fn execute_script(config_file: PathBuf, script: BarItem, sender: Sender<Update>,
     }
 }
 
+fn toml_as_number(val: &toml::Value) -> Option<f64> {
+    match val {
+        &toml::Value::Integer(i) => Some(i as f64),
+        &toml::Value::Float(f) => Some(f),
+        _ => None,
+    }
+}
+
 fn main() {
     let matches = App::new("admiral")
         .arg(Arg::with_name("config")
@@ -105,7 +113,7 @@ fn main() {
             Some(script) => {
                 let command = BarItem {
                     path: {
-                        match script.as_table().unwrap().get("path").unwrap().to_owned() {
+                        match script.as_table().expect("Invalid toml table").get("path").unwrap().to_owned() {
                             toml::Value::Array(array) => {
                                 array.iter().flat_map(|x| toml::Value::as_str(x)).map(|x| x.to_owned()).collect::<Vec<_>>()
                             },
@@ -124,7 +132,7 @@ fn main() {
                         //         .get("path").unwrap()
                         //         .as_slice().unwrap()
                         //         .iter().flat_map(|x| toml::Value::as_str(x)).map(|x| x.to_owned()).collect::<Vec<_>>()
-                    duration: script.as_table().unwrap().get("reload").and_then(|x| x.as_integer()).map(|x| x as u64),
+                    duration: script.as_table().expect("Invalid toml table").get("reload").and_then(toml_as_number).map(|x| (x * 1000f64) as u64),
                     position: position,
                 };
 

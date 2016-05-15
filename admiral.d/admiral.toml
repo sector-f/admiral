@@ -6,4 +6,4 @@ path = "title.sh"
 
 [clock]
 path = "clock.sh"
-reload = 1000
+reload = 1
