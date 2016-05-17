@@ -14,32 +14,66 @@ use clap::{App, Arg};
 mod configuration;
 
 #[derive(Debug)]
-struct BarItem {
-    path: Vec<String>,
-    duration: Option<u64>,
-    position: usize,
-}
-
-#[derive(Debug)]
 struct Update {
     position: usize,
     message: String,
 }
 
-fn execute_script(config_file: PathBuf, script: BarItem, sender: Sender<Update>,) {
-    let path = if PathBuf::from(&script.path[0]).is_relative() {
-        PathBuf::from(config_file.parent().unwrap().join(&script.path[0]))
-    } else {
-        PathBuf::from(&script.path[0])
+fn execute_script(section_name: &str, config_root: PathBuf, configuration: Option<&toml::Table>, position: usize, sender: Sender<Update>,) {
+    let configuration = configuration.expect(&format!("Failed to find valid section for {}", section_name));
+
+    let path_vector = match configuration.get("path") {
+        Some(value) => {
+            let value = value.to_owned();
+            match value {
+                toml::Value::Array(array) => {
+                    array.iter().flat_map(toml::Value::as_str).map(|x| x.to_owned()).collect::<Vec<_>>()
+                },
+
+                toml::Value::String(string) => {
+                    vec![string]
+                },
+
+                _ => {
+                    let _ = stderr().write(format!("Invalid path found for {}\n", section_name).as_bytes());
+                    panic!();
+                },
+            }
+        },
+        None => {
+            let _ = stderr().write(format!("No path found for {}\n", section_name).as_bytes());
+            panic!();
+        },
     };
 
-    let arguments = &script.path[1..];
+    let mut path = PathBuf::from(&path_vector[0]);
+    if path.is_relative() {
+        path = config_root.join(path);
+    }
+    let arguments = &path_vector[1..];
 
-    match script.duration {
+    let duration: Option<u64> = match configuration.get("reload") {
+        Some(value) => {
+            let value = value.to_owned();
+            match value {
+                toml::Value::Float(float) => {
+                    Some((float * 1000f64) as u64)
+                },
+
+                toml::Value::Integer(int) => {
+                    Some((int as f64 * 1000f64) as u64)
+                },
+                _ => None,
+            }
+        },
+        None => None,
+    };
+
+    match duration {
         Some(time) => {
             loop {
                 let output = Command::new(&path).args(arguments).output().expect(&format!("Failed to run {}", path.display()));
-                let _ = sender.send(Update { position: script.position, message: String::from_utf8_lossy(&output.stdout).trim().to_owned(), });
+                let _ = sender.send(Update { position: position, message: String::from_utf8_lossy(&output.stdout).trim().to_owned(), });
                 sleep(Duration::from_millis(time));
             }
         },
@@ -48,19 +82,11 @@ fn execute_script(config_file: PathBuf, script: BarItem, sender: Sender<Update>,
                 let output = Command::new(&path).args(arguments).stdout(Stdio::piped()).spawn().expect(&format!("Failed to run {}", path.display()));
                 let reader = BufReader::new(output.stdout.unwrap());
                 for line in reader.lines().flat_map(Result::ok) {
-                    let _ = sender.send(Update { position: script.position, message: line.trim().to_owned(), });
+                    let _ = sender.send(Update { position: position, message: line.trim().to_owned(), });
                 }
                 sleep(Duration::from_millis(10));
             }
         },
-    }
-}
-
-fn toml_as_number(val: &toml::Value) -> Option<f64> {
-    match val {
-        &toml::Value::Integer(i) => Some(i as f64),
-        &toml::Value::Float(f) => Some(f),
-        _ => None,
     }
 }
 
@@ -91,6 +117,7 @@ fn main() {
         exit(1);
     }
 
+    let config_root = PathBuf::from(&config_file.parent().unwrap());
 
     let mut buffer = String::new();
     if let Ok(mut file) = File::open(&config_file) {
@@ -111,40 +138,17 @@ fn main() {
     for value in items {
         match config_toml.get(value) {
             Some(script) => {
-                let command = BarItem {
-                    path: {
-                        match script.as_table().expect("Invalid toml table").get("path").unwrap().to_owned() {
-                            toml::Value::Array(array) => {
-                                array.iter().flat_map(|x| toml::Value::as_str(x)).map(|x| x.to_owned()).collect::<Vec<_>>()
-                            },
-
-                            toml::Value::String(string) => {
-                                vec![string]
-                            },
-
-                            _ => {
-                                let _ = stderr().write(format!("Invalid path used for {}\n", value).as_bytes()).unwrap();
-                                continue
-                            }
-                        }
-                    },
-                        // script.as_table().unwrap()
-                        //         .get("path").unwrap()
-                        //         .as_slice().unwrap()
-                        //         .iter().flat_map(|x| toml::Value::as_str(x)).map(|x| x.to_owned()).collect::<Vec<_>>()
-                    duration: script.as_table().expect("Invalid toml table").get("reload").and_then(toml_as_number).map(|x| (x * 1000f64) as u64),
-                    position: position,
-                };
-
-                position += 1;
-
                 // Annoying stuff because of how ownership works with closures
+                let script = script.to_owned();
+                let value = value.to_owned();
+                let config_root = config_root.clone();
                 let clone = sender.clone();
-                let config_file = config_file.to_owned();
+
                 let _ = thread::spawn(move || {
-                    execute_script(config_file, command, clone);
+                    execute_script(&value, config_root, script.as_table(), position, clone);
                 });
 
+                position += 1;
                 message_vec.push(String::new());
             },
             None => {
