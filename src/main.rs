@@ -8,15 +8,28 @@ use std::fs::File;
 use std::path::PathBuf;
 use std::thread::{self, sleep};
 use std::time::Duration;
+use std::env;
 
 use clap::{App, Arg};
-
-mod configuration;
 
 #[derive(Debug)]
 struct Update {
     position: usize,
     message: String,
+}
+
+fn if_readable(path: PathBuf) -> Option<PathBuf> { if path.exists() { Some(path) } else { None } }
+
+fn get_config_file() -> Option<PathBuf> {
+    let xdg_path = env::var("XDG_CONFIG_HOME").ok()
+        .map(|v| PathBuf::from(v).join("admiral.d").join("admiral.toml"))
+        .and_then(if_readable);
+
+    let dot_home = env::var("HOME").ok()
+        .map(|v| PathBuf::from(v).join(".config").join("admiral.d").join("admiral.toml"))
+        .and_then(if_readable);
+
+    xdg_path.or(dot_home)
 }
 
 fn execute_script(section_name: &str, config_root: PathBuf, configuration: Option<&toml::Table>, position: usize, sender: Sender<Update>,) {
@@ -102,7 +115,7 @@ fn main() {
     let config_file = match matches.value_of("config") {
         Some(file) => PathBuf::from(file),
         None => {
-            match configuration::get_config_file() {
+            match get_config_file() {
                 Some(file) => file,
                 None => {
                     let _ = stderr().write("Configuration file not found\n".as_bytes());
