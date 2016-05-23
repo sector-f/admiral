@@ -1,9 +1,24 @@
 [admiral]
-items = ["title", "clock"]
+items = ["left", "workspaces",
+         "center", "title",
+         "right", "clock"]
+
+[workspaces]
+path = "workspaces.sh"
 
 [title]
-path = "title.sh"
+path = ["/usr/bin/xtitle", "-s", "-t", "100"]
 
 [clock]
-path = "clock.sh"
+path = ["/usr/bin/date", "+%-I:%M %p  "]
 reload = 1
+
+# Used for formatting lemonbar
+[left]
+path = ["/usr/bin/echo", "%{l}"]
+
+[center]
+path = ["/usr/bin/echo", "%{c}"]
+
+[right]
+path = ["/usr/bin/echo", "%{r}"]
