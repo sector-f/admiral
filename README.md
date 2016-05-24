@@ -25,12 +25,15 @@ reload = 1
 # Used for formatting lemonbar
 [left]
 path = ["/usr/bin/echo", "%{l}"]
+static = true
 
 [center]
 path = ["/usr/bin/echo", "%{c}"]
+static = true
 
 [right]
 path = ["/usr/bin/echo", "%{r}"]
+static = true
 ````
 
 The first section is `[admiral]`. It has an `items` table, which is used to
@@ -39,13 +42,15 @@ the example's formatting is just to improve readability.
 
 After that, the items themselves are defined. Items may be anything that produces
 an output: shell scripts, Python scripts, commands, etc.
-Each item has a `path` value and optionally a `reload` value.
+Each item has a `path` value and optionally a `reload` value or `static`.
 If a `path` is relative, it is relative to `admiral.d` (or the directory containing the configuration file, if `-c` was used).
 If a path is absolute...well, it's absolute.
 The `reload` value is the duration in seconds between each execution of the command.
 It may be either a nonnegative integer (whole number) such as `10` or a float (number with a decimal place) such as `1.5`.
-If no `reload` value is specified, the command is only run once. This is for commands
-that never actually exit, such as `xtitle -s`.
+If no `reload` value is specified, the command is only intended to be run once. This is for commands
+that never actually exit, such as `xtitle -s`. However, the command will be restarted if its process is killed.
+If `static` is set to `true`, the command is only run once, and will not be restarted upon exit.
+This is for things that will never change, such as the echo commands in the example.
 Defined items do not have to be used.
 
 Arguments can be passed to items. This is done using a toml array.
