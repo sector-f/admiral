@@ -16,9 +16,12 @@ reload = 1
 # Used for formatting lemonbar
 [left]
 path = ["/usr/bin/echo", "%{l}"]
+static = true
 
 [center]
 path = ["/usr/bin/echo", "%{c}"]
+static = true
 
 [right]
 path = ["/usr/bin/echo", "%{r}"]
+static = true

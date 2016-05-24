@@ -10,6 +10,7 @@ use std::thread::{self, sleep};
 use std::time::Duration;
 use std::env;
 
+use toml::Value;
 use clap::{App, Arg};
 
 #[derive(Debug)]
@@ -65,6 +66,11 @@ fn execute_script(section_name: &str, config_root: PathBuf, configuration: Optio
     }
     let arguments = &path_vector[1..];
 
+    let is_static: bool = match configuration.get("static").and_then(Value::as_bool) {
+        Some(value) => value,
+        None => false,
+    };
+
     let duration: Option<u64> = match configuration.get("reload") {
         Some(value) => {
             let value = value.to_owned();
@@ -82,24 +88,29 @@ fn execute_script(section_name: &str, config_root: PathBuf, configuration: Optio
         None => None,
     };
 
-    match duration {
-        Some(time) => {
-            loop {
-                let output = Command::new(&path).args(arguments).output().expect(&format!("Failed to run {}", path.display()));
-                let _ = sender.send(Update { position: position, message: String::from_utf8_lossy(&output.stdout).trim_matches('\n').to_owned(), });
-                sleep(Duration::from_millis(time));
-            }
-        },
-        None => {
-            loop {
-                let output = Command::new(&path).args(arguments).stdout(Stdio::piped()).spawn().expect(&format!("Failed to run {}", path.display()));
-                let reader = BufReader::new(output.stdout.unwrap());
-                for line in reader.lines().flat_map(Result::ok) {
-                    let _ = sender.send(Update { position: position, message: line.trim_matches('\n').to_owned(), });
+    if is_static {
+        let output = Command::new(&path).args(arguments).output().expect(&format!("Failed to run {}", path.display()));
+        let _ = sender.send(Update { position: position, message: String::from_utf8_lossy(&output.stdout).trim_matches('\n').to_owned(), });
+    } else {
+        match duration {
+            Some(time) => {
+                loop {
+                    let output = Command::new(&path).args(arguments).output().expect(&format!("Failed to run {}", path.display()));
+                    let _ = sender.send(Update { position: position, message: String::from_utf8_lossy(&output.stdout).trim_matches('\n').to_owned(), });
+                    sleep(Duration::from_millis(time));
                 }
-                sleep(Duration::from_millis(10));
-            }
-        },
+            },
+            None => {
+                loop {
+                    let output = Command::new(&path).args(arguments).stdout(Stdio::piped()).spawn().expect(&format!("Failed to run {}", path.display()));
+                    let reader = BufReader::new(output.stdout.unwrap());
+                    for line in reader.lines().flat_map(Result::ok) {
+                        let _ = sender.send(Update { position: position, message: line.trim_matches('\n').to_owned(), });
+                    }
+                    sleep(Duration::from_millis(10));
+                }
+            },
+        }
     }
 }
 
