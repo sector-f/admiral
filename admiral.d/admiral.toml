@@ -4,7 +4,7 @@ items = ["left", "workspaces",
          "right", "clock"]
 
 [workspaces]
-path = "workspaces.sh"
+path = "bspwm_workspaces.sh"
 
 [title]
 path = ["/usr/bin/xtitle", "-s", "-t", "100"]

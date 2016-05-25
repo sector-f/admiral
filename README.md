@@ -15,6 +15,10 @@ An asynchronous bar wrapper written in Rust
 		* [path](#path)
 		* [reload](#reload)
 		* [static](#static)
+* [Example](#example)
+	* [[admiral]](#admiral-2)
+	* [Scripts](#scripts-2)
+	* [Formatting](#formatting)
 * [Bugs](#bugs)
 
 ## Introduction
@@ -65,7 +69,6 @@ if anything has actually changed since it last printed a message. If nothing has
 changed, Admiral prints nothing—this limits the amount of refreshing that your bar
 program has to do.
 
-
 ## Getting Started
 
 ### Prerequisites
@@ -108,14 +111,11 @@ repository.
 ### [admiral]
 
 `[admiral]` is the section where Admiral's output is configured.
-It has one required entry: `items`. Here is the example `[admiral]` section
-from the provided `admiral.toml` file:
+It has one required entry: `items`. Here is an example `[admiral]` section:
 
 ```
 [admiral]
-items = ["left", "workspaces",
-         "center", "title",
-         "right", "clock"]
+items = ["music", "workspaces", "clock"]
 ```
 
 Each entry in the `items` table is a script that will be run.
@@ -131,7 +131,7 @@ Here is an example script section:
 
 ```
 [clock]
-path = ["/usr/bin/date", "+%-I:%M %p"]
+path = ["/usr/bin/date", "+%I:%M %p"]
 reload = 1
 ```
 
@@ -141,7 +141,7 @@ of scripts.
 #### path
 
 `path` is the only required entry for a script. This will normally be a string,
-such as `path = "workspaces.sh"`. If arguments need to be passed, it is done using
+such as `path = "mpd.sh"`. If arguments need to be passed, it is done using
 an array, as shown above. If an array is used, the first item in it is the path
 to the script/command, and additional items in the array are the arguments passed
 to it.
@@ -156,9 +156,9 @@ each execution of the script. It may be either an integer such as `10`
 or a float such as `0.5`.
 
 If no `reload` value is specified, and `static` is not set to `true`, this indicates
-that the script should never exit. It will be run, and each line it outputs will be used
-separately. This is for commands such as `xtitle -s`, which handle polling themselves
-and output new information on a new line. If the process is killed, it will
+that the script should never exit. It will be run, and each line it outputs will be
+used separately. This is for commands such as `xtitle -s`, which handle polling
+themselves and output new information on a new line. If the process is killed, it will
 automatically be restarted.
 
 #### static
@@ -174,6 +174,91 @@ static = true
 
 This script is used to add a format sequence for `lemonbar`. It only needs to be
 run once, and its output will never change.
+
+## Example
+
+An example `admiral.d/` directory is included with admiral. The example is designed for
+use with [bspwm](https://github.com/baskerville/bspwm), and also relies on
+[xtitle](https://github.com/baskerville/xtitle) to get the window title. Its
+output is designed to be piped to `lemonbar`.
+The command `admiral | lemonbar -g x30 | sh` should work for a demonstration, although
+a greater number of clickable areas may need to be specified with `lemonbar -a`
+if you have more than 8 desktops.
+
+The example bar has three sections: BSPWM workspace information, the current window
+title, and the current time. The workspace section uses the
+letters `f`, `o`, and `u` to represent free (empty), occupied, and urgent desktops,
+respectively. Lowercase letters represent unfocused desktops, and an uppercase
+letter represents the focused desktop.
+
+This workspace section is clickable. Left-clicking on a letter will switch to the
+corresponding desktop. Scrolling up with the mouse wheel while the cursor is over
+the workspace section will switch to the previous desktop, and scrolling
+down with the mouse wheel will switch to the next desktop.
+
+This directory contains two files: an `admiral.toml` file and `bspwm_workspaces.sh`.
+Let's look at the example `admiral.toml`:
+
+### [admiral]
+
+This is the provided `[admiral]` section:
+
+```
+[admiral]
+items = ["left", "workspaces",
+         "center", "title",
+         "right", "clock"]
+```
+
+Six scripts  are listed. Three are used to provide information, and the other
+three are used for formatting the output.
+
+### Scripts
+
+These are the first three scripts listed in the example `admiral.toml` file:
+
+```
+[workspaces]
+path = "bspwm_workspaces.sh"
+
+[title]
+path = ["/usr/bin/xtitle", "-s", "-t", "100"]
+
+[clock]
+path = ["/usr/bin/date", "+%-I:%M %p  "]
+reload = 1
+```
+
+`bspwm_workspaces.sh` is a Bash script that parses the output of `bspc subscribe report`
+and converts it into a clickable, human-readable format for `lemonbar`. Because
+`bspc subscribe report` (and therefore `bspwm_workspaces.sh`) never exits, no reload
+value is specified.
+
+### Formatting
+
+These are the last three scripts:
+
+```
+[left]
+path = ["/usr/bin/echo", "%{l}"]
+static = true
+
+[center]
+path = ["/usr/bin/echo", "%{c}"]
+static = true
+
+[right]
+path = ["/usr/bin/echo", "%{r}"]
+static = true
+```
+
+These output format strings to be interpreted by `lemonbar`. As their output only
+needs to be captured once, `static` is set to `true`.
+Remember that `admiral` removes trailing newline characters; this means that
+using `echo` rather than `echo -n` will still work here.
+
+Keeping the format strings outside of the main scripts allows for quicker, easier
+formatting.
 
 ## Bugs
 
