@@ -141,7 +141,7 @@ of scripts.
 #### path
 
 `path` is the only required entry for a script. This will normally be a string,
-such as `path = "workspaces.sh"` If arguments need to be passed, it is done using
+such as `path = "workspaces.sh"`. If arguments need to be passed, it is done using
 an array, as shown above. If an array is used, the first item in it is the path
 to the script/command, and additional items in the array are the arguments passed
 to it.
