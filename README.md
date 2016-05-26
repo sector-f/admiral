@@ -15,6 +15,7 @@ An asynchronous bar wrapper written in Rust
 		* [path](#path)
 		* [reload](#reload)
 		* [static](#static)
+	* [Newlines](#newlines)
 * [Example](#example)
 	* [[admiral]](#admiral-2)
 	* [Scripts](#scripts-2)
@@ -135,9 +136,6 @@ path = ["/usr/bin/date", "+%I:%M %p"]
 reload = 1
 ```
 
-Note that leading and trailing newline characters are stripped from the output
-of scripts.
-
 #### path
 
 `path` is the only required entry for a script. This will normally be a string,
@@ -174,6 +172,22 @@ static = true
 
 This script is used to add a format sequence for `lemonbar`. It only needs to be
 run once, and its output will never change.
+
+### Newlines
+
+Bars expect newline characters to be used only at the end of each full line of input;
+Admiral tries to respect this by trimming whitespace from the output of scripts.
+Users should be aware of how this is handled:
+
+* Both `\r` and `\n` characters are considered newline characters
+
+* If a `reload` value is specified or `static` is `true`, Admiral trims newline
+characters from both the beginning and end of a script's output.
+
+* If no `reload` value is specified and `static` is false, Admiral
+uses each line produced by the script. This means that each line meant to be displayed
+must end in a newline character. However, this newline character will still be
+stripped from Admiral's output so as to keep its complete output on a single line.
 
 ## Example
 

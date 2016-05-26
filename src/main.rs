@@ -90,13 +90,13 @@ fn execute_script(section_name: &str, config_root: PathBuf, configuration: Optio
 
     if is_static {
         let output = Command::new(&path).args(arguments).output().expect(&format!("Failed to run {}", path.display()));
-        let _ = sender.send(Update { position: position, message: String::from_utf8_lossy(&output.stdout).trim_matches('\n').to_owned(), });
+        let _ = sender.send(Update { position: position, message: String::from_utf8_lossy(&output.stdout).trim_matches(&['\r', '\n'] as &[_]).to_owned(), });
     } else {
         match duration {
             Some(time) => {
                 loop {
                     let output = Command::new(&path).args(arguments).output().expect(&format!("Failed to run {}", path.display()));
-                    let _ = sender.send(Update { position: position, message: String::from_utf8_lossy(&output.stdout).trim_matches('\n').to_owned(), });
+                    let _ = sender.send(Update { position: position, message: String::from_utf8_lossy(&output.stdout).trim_matches(&['\r', '\n'] as &[_]).to_owned(), });
                     sleep(Duration::from_millis(time));
                 }
             },
@@ -105,7 +105,7 @@ fn execute_script(section_name: &str, config_root: PathBuf, configuration: Optio
                     let output = Command::new(&path).args(arguments).stdout(Stdio::piped()).spawn().expect(&format!("Failed to run {}", path.display()));
                     let reader = BufReader::new(output.stdout.unwrap());
                     for line in reader.lines().flat_map(Result::ok) {
-                        let _ = sender.send(Update { position: position, message: line.trim_matches('\n').to_owned(), });
+                        let _ = sender.send(Update { position: position, message: line.trim_matches(&['\r', '\n'] as &[_]).to_owned(), });
                     }
                     sleep(Duration::from_millis(10));
                 }
