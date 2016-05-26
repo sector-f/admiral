@@ -176,17 +176,18 @@ run once, and its output will never change.
 ### Newlines
 
 Bars expect newline characters to be used only at the end of each full line of input;
-Admiral tries to respect this by trimming whitespace from the output of scripts.
+Admiral tries to respect this by trimming newlines from the output of scripts.
 Users should be aware of how this is handled:
 
-* Both `\r` and `\n` characters are considered newline characters
+* Both `\r` and `\n` characters are trimmed from the start and end of a script's
+output
 
 * If a `reload` value is specified or `static` is `true`, Admiral trims newline
 characters from both the beginning and end of a script's output.
 
 * If no `reload` value is specified and `static` is false, Admiral
 uses each line produced by the script. This means that each line meant to be displayed
-must end in a newline character. However, this newline character will still be
+must end in either `\n` or `\r\n`. However, these characters will still be
 stripped from Admiral's output so as to keep its complete output on a single line.
 
 ## Example
