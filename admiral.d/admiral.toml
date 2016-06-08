@@ -7,21 +7,21 @@ items = ["left", "workspaces",
 path = "bspwm_workspaces.sh"
 
 [title]
-path = ["/usr/bin/xtitle", "-s", "-t", "100"]
+path = "xtitle -s -t 100"
 
 [clock]
-path = ["/usr/bin/date", "+%-I:%M %p  "]
+path = "date +%-I:%M %p  "
 reload = 1
 
 # Used for formatting lemonbar
 [left]
-path = ["/usr/bin/echo", "%{l}"]
+path = "echo %{l}"
 static = true
 
 [center]
-path = ["/usr/bin/echo", "%{c}"]
+path = "echo %{c}"
 static = true
 
 [right]
-path = ["/usr/bin/echo", "%{r}"]
+path = "echo %{r}"
 static = true

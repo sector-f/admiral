@@ -29,13 +29,13 @@ An asynchronous bar wrapper written in Rust
 Programs like [lemonbar](https://github.com/LemonBoy/bar) and
 [i3bar](https://i3wm.org/i3bar/) have become popular in recent years,
 and with good reason. For those of you who are unfamiliar with them,
-these programs read from standard input and then ouput what they receive on a bar.
+these programs read from standard input and then output what they receive on a bar.
 For the most part, their output is identical to their input, but they accept
 some format strings which allow the user to specify things like colors,
 justification, and clickable areas.
 
-The pro of this system is that it is very powerful. The con is that it can
-be rather difficult to configure.
+The advantage of this system is that it is very powerful. The disadvantage is that
+it can be rather difficult to configure.
 
 A typical bar script looks something like this: a shell script, probably bash,
 is used to collect and format the output of various commands. This is done in
@@ -52,6 +52,11 @@ items. One day, I noticed the clock on my bar had stopped working.
 The cause? The internet had died. This prevented the package counter command
 (`checkupdates | wc -l`) from ever finishing, which caused the entire
 bar to stop working.
+
+Another major problem is that shell scripts of these types are bug-prone and
+tend to become very bloated.
+Admiral has a declarative style which allows you to configure your bar with ease
+and avoid pesky bugs.
 
 ### What Admiral Does
 
@@ -106,7 +111,7 @@ Configuration is done with an `admiral.toml` file. This file is looked for in
 variable is set). Alternatively, a configuration file may be specified with
 the `-c` flag, e.g. `admiral -c /path/to/file.toml`.
 
-An example `admiral.d/` (complete with `admiral.toml` file) is included in this
+An example `admiral.d/` (complete with the `admiral.toml`) is included in this
 repository.
 
 ### [admiral]
@@ -119,31 +124,27 @@ It has one required entry: `items`. Here is an example `[admiral]` section:
 items = ["music", "workspaces", "clock"]
 ```
 
-Each entry in the `items` table is a script that will be run.
+Each entry in the `items` table specifies a section of the config file that will be run.
 Note that the order specified here is the order that Admiral will use
 for the scripts' output.
 
-### Scripts
+### Sections of the admiral.toml
 
-The word "scripts" isn't entirely accurate; these can be anything that produce
-output on the command line: shell scripts, python scripts, executable binaries, etc.
+Each section of the `admiral.toml` contains a command that producses some output:
+you can use shell scripts, python scripts, executable binaries, etc.
 
 Here is an example script section:
 
 ```
 [clock]
-path = ["/usr/bin/date", "+%I:%M %p"]
+path = "date +%I:%M %p"
 reload = 1
 ```
 
 #### path
 
 `path` is the only required entry for a script. This will normally be a string,
-such as `path = "mpd.sh"`. If arguments need to be passed, it is done using
-an array, as shown above. If an array is used, the first item in it is the path
-to the script/command, and additional items in the array are the arguments passed
-to it.
-
+such as `path = "mpd.sh"` or maybe `path = "echo 'Hello, world!'".
 If a `path` is relative, it is relative to `admiral.d` (or the directory containing
 the configuration file, if `-c` was used).
 
@@ -166,7 +167,7 @@ scripts that only need to be run once. Here is an example:
 
 ```
 [center]
-path = ["/usr/bin/echo", "%{c}"]
+path = "echo %{c}"
 static = true
 ```
 
@@ -222,7 +223,7 @@ items = ["left", "workspaces",
          "right", "clock"]
 ```
 
-Six scripts  are listed. Three are used to provide information, and the other
+Six scripts are listed. Three are used to provide information, and the other
 three are used for formatting the output.
 
 ### Scripts
@@ -234,10 +235,10 @@ These are the first three scripts listed in the example `admiral.toml` file:
 path = "bspwm_workspaces.sh"
 
 [title]
-path = ["/usr/bin/xtitle", "-s", "-t", "100"]
+path = "xtitle -s -t 100"
 
 [clock]
-path = ["/usr/bin/date", "+%-I:%M %p  "]
+path = "date +%-I:%M %p  "
 reload = 1
 ```
 
@@ -252,15 +253,15 @@ These are the last three scripts:
 
 ```
 [left]
-path = ["/usr/bin/echo", "%{l}"]
+path = "echo %{l}"
 static = true
 
 [center]
-path = ["/usr/bin/echo", "%{c}"]
+path = "echo %{c}"
 static = true
 
 [right]
-path = ["/usr/bin/echo", "%{r}"]
+path = "echo %{r}"
 static = true
 ```
 
@@ -274,7 +275,7 @@ formatting.
 
 ## Bugs
 
-* Specifying a toml file in the current directoy as `admiral -c admiral.toml`
+* Specifying a toml file in the current directory as `admiral -c admiral.toml`
 causes scripts with relative paths to fail.
 	* Workaround: Give the "directory name" as well, i.e. `admiral -c ./admiral.toml`
 

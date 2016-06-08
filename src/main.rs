@@ -9,6 +9,7 @@ use std::path::PathBuf;
 use std::thread::{self, sleep};
 use std::time::Duration;
 use std::env;
+use std::ffi::OsStr;
 
 use toml::Value;
 use clap::{App, Arg};
@@ -34,18 +35,20 @@ fn get_config_file() -> Option<PathBuf> {
 }
 
 fn execute_script(section_name: &str, config_root: PathBuf, configuration: Option<&toml::Table>, position: usize, sender: Sender<Update>,) {
+    let _ = env::set_current_dir(&config_root);
     let configuration = configuration.expect(&format!("Failed to find valid section for {}", section_name));
-
-    let path_vector = match configuration.get("path") {
+    let command = match configuration.get("path") {
         Some(value) => {
             let value = value.to_owned();
             match value {
-                toml::Value::Array(array) => {
-                    array.iter().flat_map(toml::Value::as_str).map(|x| x.to_owned()).collect::<Vec<_>>()
+                toml::Value::Array(_) => {
+                    let _ = stderr().write(format!("Invalid path found for {}: arrays are deprecated - use a string instead\n", section_name).as_bytes());
+
+                    panic!();
                 },
 
                 toml::Value::String(string) => {
-                    vec![string]
+                    string
                 },
 
                 _ => {
@@ -60,12 +63,6 @@ fn execute_script(section_name: &str, config_root: PathBuf, configuration: Optio
         },
     };
 
-    let mut path = PathBuf::from(&path_vector[0]);
-    if path.is_relative() {
-        path = config_root.join(path);
-    }
-    let arguments = &path_vector[1..];
-
     let is_static: bool = match configuration.get("static").and_then(Value::as_bool) {
         Some(value) => value,
         None => false,
@@ -77,32 +74,43 @@ fn execute_script(section_name: &str, config_root: PathBuf, configuration: Optio
             match value {
                 toml::Value::Float(float) => {
                     Some((float * 1000f64) as u64)
-                },
-
+                }
                 toml::Value::Integer(int) => {
                     Some((int as f64 * 1000f64) as u64)
                 },
                 _ => None,
             }
         },
-        None => None,
+        None => None
     };
 
+    let shell_var = match env::var("SHELL").ok() {
+        Some(sh) => {
+            sh
+        },
+        None => {
+            let _ = stderr().write("Could not find your system's shell. Make sure the $SHELL variable is set\n.".as_bytes());
+            panic!()
+        }
+    };
+    let shell = OsStr::new(&shell_var);
+    let arguments = &["-c", &command];
+
     if is_static {
-        let output = Command::new(&path).args(arguments).output().expect(&format!("Failed to run {}", path.display()));
+        let output = Command::new(&shell).args(arguments).output().expect(&format!("Failed to run {}", &command));
         let _ = sender.send(Update { position: position, message: String::from_utf8_lossy(&output.stdout).trim_matches(&['\r', '\n'] as &[_]).to_owned(), });
     } else {
         match duration {
             Some(time) => {
                 loop {
-                    let output = Command::new(&path).args(arguments).output().expect(&format!("Failed to run {}", path.display()));
+                    let output = Command::new(&shell).args(arguments).output().expect(&format!("Failed to run {}", &command));
                     let _ = sender.send(Update { position: position, message: String::from_utf8_lossy(&output.stdout).trim_matches(&['\r', '\n'] as &[_]).to_owned(), });
                     sleep(Duration::from_millis(time));
                 }
             },
             None => {
                 loop {
-                    let output = Command::new(&path).args(arguments).stdout(Stdio::piped()).spawn().expect(&format!("Failed to run {}", path.display()));
+                    let output = Command::new(&shell).args(arguments).stdout(Stdio::piped()).spawn().expect(&format!("Failed to run {}", &command));
                     let reader = BufReader::new(output.stdout.unwrap());
                     for line in reader.lines().flat_map(Result::ok) {
                         let _ = sender.send(Update { position: position, message: line.trim_matches(&['\r', '\n'] as &[_]).to_owned(), });
@@ -148,7 +156,13 @@ fn main() {
         file.read_to_string(&mut buffer).expect("Could not read configuration file");
     }
 
-    let config_toml = toml::Parser::new(&buffer).parse().unwrap();
+    let config_toml = match toml::Parser::new(&buffer).parse() {
+        Some(val) => val,
+        None => {
+            let _ = stderr().write("Syntax error in configuration file.\n".as_bytes());
+            panic!();
+        }
+    };
 
     let admiral_config = config_toml.get("admiral").unwrap();
     let items = admiral_config.as_table().unwrap().get("items").unwrap().as_slice().unwrap().iter().map(|x| x.as_str().unwrap()).collect::<Vec<_>>();
