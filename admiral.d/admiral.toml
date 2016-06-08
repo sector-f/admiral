@@ -10,18 +10,18 @@ path = "bspwm_workspaces.sh"
 path = "xtitle -s -t 100"
 
 [clock]
-path = "date +%-I:%M %p  "
+path = "date '+%-I:%M%p  '"
 reload = 1
 
 # Used for formatting lemonbar
 [left]
-path = "echo %{l}"
+path = "echo '%{l}'"
 static = true
 
 [center]
-path = "echo %{c}"
+path = "echo '%{c}'"
 static = true
 
 [right]
-path = "echo %{r}"
+path = "echo '%{r}'"
 static = true

@@ -137,7 +137,7 @@ Here is an example script section:
 
 ```
 [clock]
-path = "date +%I:%M %p"
+path = "date '+%I:%M %p'"
 reload = 1
 ```
 
@@ -167,7 +167,7 @@ scripts that only need to be run once. Here is an example:
 
 ```
 [center]
-path = "echo %{c}"
+path = "echo '%{c}'"
 static = true
 ```
 
@@ -232,13 +232,13 @@ These are the first three scripts listed in the example `admiral.toml` file:
 
 ```
 [workspaces]
-path = "bspwm_workspaces.sh"
+path = "./bspwm_workspaces.sh"
 
 [title]
 path = "xtitle -s -t 100"
 
 [clock]
-path = "date +%-I:%M %p  "
+path = "date '+%-I:%M %p  '"
 reload = 1
 ```
 
@@ -253,15 +253,15 @@ These are the last three scripts:
 
 ```
 [left]
-path = "echo %{l}"
+path = "echo '%{l}'"
 static = true
 
 [center]
-path = "echo %{c}"
+path = "echo '%{c}'"
 static = true
 
 [right]
-path = "echo %{r}"
+path = "echo '%{r}'"
 static = true
 ```
 
