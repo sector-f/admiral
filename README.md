@@ -11,14 +11,15 @@ An asynchronous bar wrapper written in Rust
 	* [Installation](#installation)
 * [Configuration](#configuration)
 	* [[admiral]](#admiral-1)
-	* [Scripts](#scripts)
+	* [Sections of the admiral.toml](#sections-of-the-admiraltoml)
 		* [path](#path)
+		* [shell](#shell)
 		* [reload](#reload)
 		* [static](#static)
 	* [Newlines](#newlines)
 * [Example](#example)
 	* [[admiral]](#admiral-2)
-	* [Scripts](#scripts-2)
+	* [Scripts](#scripts)
 	* [Formatting](#formatting)
 * [Bugs](#bugs)
 
@@ -130,7 +131,7 @@ for the scripts' output.
 
 ### Sections of the admiral.toml
 
-Each section of the `admiral.toml` contains a command that producses some output:
+Each section of the `admiral.toml` contains a command that produces some output;
 you can use shell scripts, python scripts, executable binaries, etc.
 
 Here is an example script section:
@@ -143,10 +144,18 @@ reload = 1
 
 #### path
 
-`path` is the only required entry for a script. This will normally be a string,
-such as `path = "mpd.sh"` or maybe `path = "echo 'Hello, world!'".
-If a `path` is relative, it is relative to `admiral.d` (or the directory containing
-the configuration file, if `-c` was used).
+`path` is the only required entry for a script. The specified command is executed
+by a shell running in the same directory as the `admiral.toml`.
+So, `path = "./mpd.sh"` will run the `mpd.sh` in the same directory as the
+`admiral.toml`, and `path = "echo 'Hello, world!'"` will output "Hello, world!" using
+your shell. Note that the shell is determined via the `$SHELL` environment variable.
+
+#### shell
+
+`shell` is an optional variable that specifies an alternate shell to execute commands
+with. The default shell is your `$SHELL` environment variable. Using an alternate
+shell may be useful if you wish to leverage features of a specific shell for a certain
+command. An example use is `shell = "/usr/bin/fish"`.
 
 #### reload
 
@@ -163,7 +172,7 @@ automatically be restarted.
 #### static
 
 `static` is an optional boolean variable. It is set to false by default. It is for
-scripts that only need to be run once. Here is an example: 
+scripts that only need to be run once. Here is an example:
 
 ```
 [center]
