@@ -1,6 +1,6 @@
 # Admiral
 
-An asynchronous bar wrapper written in Rust
+Executes multiple programs concurrently to generate output for bars
 
 ## Table of Contents
 
@@ -61,17 +61,18 @@ and avoid pesky bugs.
 
 ### What Admiral Does
 
-Admiral runs scripts specified by the user and prints their output. It allows
+Admiral runs programs specified by the user and prints their output. It allows
 for a clear separation of different sections, which simplifies configuration.
 
-The best part? **Each script is handled asynchronously by its own thread.**
-This means that each script is updated independently of the other scripts.
-It also means that **if something fails, it fails independently** of the other scripts.
+The best part? **Each program is run in its own thread.**
+This means that each section is updated independently of the other sections.
+It also means that **if something fails, it fails independently** of the other
+sections.
 That example where the clock stopped? This would never happen with Admiral.
 Sure, `checkupdates` would still hang indefinitely and prevent that
 number from changing. But the clock (and the rest of the bar) would be unaffected.
 
-Admiral also limits its output. Whenever one of its scripts updates, it checks to see
+Admiral also limits its output. Whenever one of its programs updates, it checks to see
 if anything has actually changed since it last printed a message. If nothing has
 changed, Admiral prints nothing—this limits the amount of refreshing that your bar
 program has to do.
