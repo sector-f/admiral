@@ -84,16 +84,34 @@ fn execute_script(section_name: &str, config_root: PathBuf, configuration: Optio
         None => None
     };
 
-    let shell_var = match env::var("SHELL").ok() {
-        Some(sh) => {
-            sh
+    let shell = match configuration.get("shell") {
+        Some(value) => {
+            let value = value.to_owned();
+            match value {
+                toml::Value::String(string) => {
+                    string
+                },
+                _ => {
+                    let _ = stderr().write(format!("Invalid shell found for {}\n", section_name).as_bytes());
+                    panic!()
+                }
+            }
         },
         None => {
-            let _ = stderr().write("Could not find your system's shell. Make sure the $SHELL variable is set\n.".as_bytes());
-            panic!()
+            match env::var("SHELL").ok() {
+                Some(sh) => {
+                    sh
+                },
+                None => {
+                    let _ = stderr().write("Could not find your system's shell. Make sure the $SHELL variable is set.\n".as_bytes());
+                    panic!()
+                }
+            }
         }
     };
-    let shell = OsStr::new(&shell_var);
+
+    let shell = OsStr::new(&shell);
+
     let arguments = &["-c", &command];
 
     if is_static {
