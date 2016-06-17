@@ -1,6 +1,6 @@
 [root]
 name = "admiral"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "clap 2.5.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "toml 0.1.28 (registry+https://github.com/rust-lang/crates.io-index)",

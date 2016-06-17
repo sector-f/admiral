@@ -142,6 +142,7 @@ fn execute_script(section_name: &str, config_root: PathBuf, configuration: Optio
 
 fn main() {
     let matches = App::new("admiral")
+        .version("1.0.0")
         .arg(Arg::with_name("config")
              .help("Specify alternate config file")
              .short("c")
