@@ -11,7 +11,6 @@ use std::time::Duration;
 use std::env;
 use std::ffi::OsStr;
 
-// use toml::Value;
 use clap::{App, Arg};
 
 mod command;
@@ -55,7 +54,7 @@ fn run_command(command: command::Command, sender: Sender<Update>) {
 
 fn main() {
     let matches = App::new("admiral")
-        .version("1.0.1")
+        .version("1.0.2")
         .arg(Arg::with_name("config")
              .help("Specify alternate config file")
              .short("c")
@@ -96,8 +95,7 @@ fn main() {
     let config_toml = match toml::Parser::new(&buffer).parse() {
         Some(val) => val,
         None => {
-            let _ = writeln!(stderr(), "Syntax error in configuration file.");
-            panic!();
+            panic!("Syntax error in configuration file");
         }
     };
 
@@ -146,10 +144,11 @@ fn main() {
     }
 
     for line in receiver.iter() {
-        let position = line.position;
-        message_vec[position] = line.message;
-        if print_message != message_vec.iter().cloned().collect::<String>() {
-            print_message = message_vec.iter().cloned().collect::<String>();
+        message_vec[line.position] = line.message;
+        let new_message_string = message_vec.iter().cloned().collect::<String>();
+
+        if print_message != new_message_string {
+            print_message = new_message_string;
             sleep(Duration::from_millis(5));
             println!("{}", print_message);
         }

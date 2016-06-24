@@ -1,7 +1,6 @@
 extern crate toml;
 
 use std::collections::BTreeMap;
-use std::io::{stderr, Write};
 use std::path::PathBuf;
 use std::env;
 
@@ -34,8 +33,7 @@ fn get_path(section_name: &str, configuration: &BTreeMap<String, toml::Value>) -
             let value = value.to_owned();
             match value {
                 toml::Value::Array(_) => {
-                    let _ = writeln!(stderr(), "Invalid path found for {}: arrays are deprecated - use a string instead\n", section_name);
-                    panic!();
+                    panic!("Invalid path found for {}: arrays are deprecated - use a string instead", section_name);
                 },
 
                 toml::Value::String(string) => {
@@ -43,14 +41,12 @@ fn get_path(section_name: &str, configuration: &BTreeMap<String, toml::Value>) -
                 },
 
                 _ => {
-                    let _ = writeln!(stderr(), "Invalid path found for {}", section_name);
-                    panic!();
+                    panic!("Invalid path found for {}", section_name);
                 },
             }
         },
         None => {
-            let _ = stderr().write(format!("No path found for {}\n", section_name).as_bytes());
-            panic!();
+            panic!("No path found for {}", section_name);
         },
     }
 }
@@ -89,8 +85,7 @@ fn get_shell(section_name: &str, configuration: &BTreeMap<String, toml::Value>) 
                     PathBuf::from(string)
                 },
                 _ => {
-                    let _ = stderr().write(format!("Invalid shell found for {}\n", section_name).as_bytes());
-                    panic!()
+                    panic!("Invalid shell found for {}", section_name);
                 }
             }
         },
@@ -100,8 +95,7 @@ fn get_shell(section_name: &str, configuration: &BTreeMap<String, toml::Value>) 
                     PathBuf::from(sh)
                 },
                 None => {
-                    let _ = stderr().write("Could not find your system's shell. Make sure the $SHELL variable is set.\n".as_bytes());
-                    panic!()
+                    panic!("Could not find your system's shell. Make sure the $SHELL variable is set");
                 }
             }
         }
