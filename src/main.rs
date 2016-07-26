@@ -24,7 +24,7 @@ struct Update {
 
 fn run_command(command: command::Command, sender: Sender<Update>) {
     let shell = OsStr::new(&command.shell);
-    let arguments = &["-c", &command.path];
+    let arguments = &["-c", &*command.path];
 
     if command.is_static {
         let output = Command::new(&shell).args(arguments).output().expect(&format!("Failed to run {}", &command.path));
@@ -54,7 +54,7 @@ fn run_command(command: command::Command, sender: Sender<Update>) {
 
 fn main() {
     let matches = App::new("admiral")
-        .version("1.0.2")
+        .version(option_env!("CARGO_PKG_VERSION").unwrap_or("unknown version"))
         .arg(Arg::with_name("config")
              .help("Specify alternate config file")
              .short("c")
