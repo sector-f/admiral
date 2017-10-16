@@ -16,7 +16,7 @@ pub struct Command {
     pub is_static: bool,
 }
 
-pub fn get_command(section_name: &str, configuration: &toml::Table, position: usize) -> Command {
+pub fn get_command(section_name: &str, configuration: &toml::value::Table, position: usize) -> Command {
     Command {
         name: String::from(section_name),
         path: get_path(section_name, configuration),

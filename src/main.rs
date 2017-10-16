@@ -1,5 +1,6 @@
 extern crate toml;
 extern crate clap;
+extern crate threadpool;
 
 use std::process::{Command, exit, Stdio};
 use std::io::{stderr, Write, Read, BufRead, BufReader};
@@ -12,6 +13,8 @@ use std::env;
 use std::ffi::OsStr;
 
 use clap::{App, Arg};
+use threadpool::ThreadPool;
+use toml::Value;
 
 mod command;
 mod config;
@@ -92,9 +95,9 @@ fn main() {
         },
     }
 
-    let config_toml = match toml::Parser::new(&buffer).parse() {
-        Some(val) => val,
-        None => {
+    let config_toml = match (&buffer).parse::<Value>() {
+        Ok(val) => val,
+        Err(_) => {
             panic!("Syntax error in configuration file");
         }
     };
@@ -103,7 +106,7 @@ fn main() {
     let items = admiral_config
         .as_table().expect("admiral section is not valid TOML table")
         .get("items").expect("[admiral] section does not have an \"items\" section")
-        .as_slice().expect("items section is not valid TOML array")
+        .as_array().expect("items section is not valid TOML array")
         .iter().map(|x| x.as_str().unwrap()).collect::<Vec<_>>();
 
     let (sender, receiver) = channel::<Update>();
@@ -112,6 +115,9 @@ fn main() {
     let mut print_message = String::new();
     let mut position: usize = 0;
     let _ = env::set_current_dir(&config_root);
+
+    const THREAD_NUM: usize = 1; // Issue asked for a single worker thread.
+    let pool = ThreadPool::new(THREAD_NUM);
 
     for value in items {
         match config_toml.get(value) {
@@ -129,9 +135,15 @@ fn main() {
 
                 let command = command::get_command(&value, &table, position);
 
-                let _ = thread::spawn(move || {
-                    run_command(command, clone);
-                });
+                if command.is_static {
+                    pool.execute(move || {
+                        run_command(command, clone);
+                    });
+                } else {
+                    let _ = thread::spawn(move || {
+                        run_command(command, clone);
+                    });
+                }
 
                 position += 1;
                 message_vec.push(String::new());

@@ -1,8 +1,11 @@
 [package]
+authors = ["Adam <adamsimeth@gmail.com>"]
 name = "admiral"
 version = "1.0.3"
-authors = ["Adam <adamsimeth@gmail.com>"]
 
 [dependencies]
-toml = "0.1.*"
 clap = "2.*"
+serde = "1.0.15"
+serde_derive = "1.0.15"
+threadpool = "1.7.0"
+toml = "0.4.*"
