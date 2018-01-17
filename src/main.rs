@@ -62,6 +62,7 @@ fn main() {
              .help("Specify alternate config file")
              .short("c")
              .long("config-file")
+             .value_name("FILE")
              .takes_value(true))
         .get_matches();
 
