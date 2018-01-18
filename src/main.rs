@@ -1,6 +1,14 @@
+#[macro_use]
+extern crate serde_derive;
+
 extern crate toml;
+use toml::Value;
+
 extern crate clap;
+use clap::{App, Arg};
+
 extern crate threadpool;
+use threadpool::ThreadPool;
 
 use std::process::{Command, exit, Stdio};
 use std::io::{stderr, Write, Read, BufRead, BufReader};
@@ -12,12 +20,9 @@ use std::time::Duration;
 use std::env;
 use std::ffi::OsStr;
 
-use clap::{App, Arg};
-use threadpool::ThreadPool;
-use toml::Value;
-
 mod command;
 mod config;
+use config;:ConfigFile;
 
 #[derive(Debug)]
 struct Update {
