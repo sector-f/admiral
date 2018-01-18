@@ -9,7 +9,3 @@ serde = "1.0.27"
 serde_derive = "1.0.27"
 threadpool = "1.7.1"
 toml = "0.4.5"
-
-[[bin]]
-path = "src/validate.rs"
-name = "validate"

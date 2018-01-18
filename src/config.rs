@@ -1,17 +1,16 @@
 extern crate serde;
-use self::serde::de::{Deserialize, Deserializer};
+use config::serde::de::{Deserialize, Deserializer};
+use config::serde::de::Error;
+
 use toml::Value;
 use toml::value::Table;
 
-use config::serde::de::Error;
-
 use std::path::PathBuf;
 use std::env;
-use std::collections::BTreeMap;
 
 #[derive(Debug, Serialize)]
 pub struct ConfigFile {
-    scripts: Vec<Script>,
+    pub scripts: Vec<Script>,
 }
 
 impl<'de> Deserialize<'de> for ConfigFile {
@@ -26,8 +25,13 @@ impl<'de> Deserialize<'de> for ConfigFile {
                                 let mut scripts = Vec::new();
                                 for item in admiral.items {
                                     if let Some(v) = table.get(&item) {
-                                        if let Ok(s) = Value::try_into::<Script>(v.to_owned()) {
-                                            scripts.push(s);
+                                        match Value::try_into::<Script>(v.to_owned()) {
+                                            Ok(s) => {
+                                                scripts.push(s);
+                                            },
+                                            Err(e) => {
+                                                return Err(Error::custom(e.to_string()));
+                                            },
                                         }
                                     }
                                 }
@@ -61,13 +65,14 @@ pub struct ItemList {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Script {
-    path: String,
-    reload: Option<f64>,
+    pub path: String,
+    pub reload: Option<f64>,
     #[serde(rename = "static")]
-    is_static: Option<bool>,
-    shell: Option<bool>,
+    pub is_static: Option<bool>,
+    pub shell: Option<String>,
 }
 
+#[allow(dead_code)]
 pub fn get_config_file() -> Option<PathBuf> {
     let xdg_path = env::var("XDG_CONFIG_HOME").ok()
         .map(|v| PathBuf::from(v).join("admiral.d").join("admiral.toml"))
@@ -80,4 +85,5 @@ pub fn get_config_file() -> Option<PathBuf> {
     xdg_path.or(dot_home)
 }
 
+#[allow(dead_code)]
 fn if_readable(path: PathBuf) -> Option<PathBuf> { if path.exists() { Some(path) } else { None } }
