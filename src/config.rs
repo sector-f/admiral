@@ -63,13 +63,31 @@ pub struct ItemList {
     items: Vec<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Script {
     pub path: String,
     pub reload: Option<f64>,
     #[serde(rename = "static")]
     pub is_static: Option<bool>,
     pub shell: Option<String>,
+}
+
+impl Script {
+    pub fn shell(&self) -> PathBuf {
+        match self.shell {
+            Some(ref shell) => PathBuf::from(&shell),
+            None => {
+                match env::var_os("SHELL") {
+                    Some(sh) => {
+                        PathBuf::from(&sh)
+                    },
+                    None => {
+                        PathBuf::from("/bin/sh")
+                    }
+                }
+            }
+        }
+    }
 }
 
 #[allow(dead_code)]

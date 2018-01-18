@@ -3,6 +3,10 @@ extern crate serde_derive;
 
 extern crate toml;
 
+extern crate chan;
+extern crate chan_signal;
+use chan_signal::Signal;
+
 extern crate clap;
 use clap::{App, Arg};
 
@@ -11,10 +15,10 @@ use threadpool::ThreadPool;
 
 use std::process::{Command, exit, Stdio};
 use std::io::{Read, BufRead, BufReader};
-use std::sync::mpsc::{channel, Sender};
 use std::fs::File;
 use std::path::PathBuf;
 use std::thread::{self, sleep};
+use std::sync::mpsc;
 use std::time::Duration;
 use std::env;
 
@@ -22,56 +26,76 @@ mod config;
 use config::{ConfigFile, Script};
 
 #[derive(Debug)]
+enum Message {
+    Update(Update),
+    Signal(Signal),
+}
+
+#[derive(Debug)]
 struct Update {
     position: usize,
     message: String,
 }
 
-fn run_command(command: Script, pos: usize, sender: Sender<Update>) {
-    let shell = match command.shell {
-        Some(shell) => PathBuf::from(shell),
-        None => {
-            match env::var_os("SHELL") {
-                Some(sh) => {
-                    PathBuf::from(sh)
-                },
-                None => {
-                    PathBuf::from("/bin/sh")
-                }
+fn run_static_script(script: Script, pos: usize, msg_tx: chan::Sender<Message>, interrupt_rx: mpsc::Receiver<()>) {
+    let shell = script.shell();
+    let arguments = &["-c", &*script.path];
+
+    match Command::new(&shell).args(arguments).output() {
+        Ok(output) => {
+            if let Err(_) = interrupt_rx.try_recv() {
+                let _ = msg_tx.send(Message::Update(Update { position: pos, message: String::from_utf8_lossy(&output.stdout).trim_matches(&['\r', '\n'] as &[_]).to_owned(), }));
             }
-        }
-    };
+        },
+        Err(e) => {
+            eprintln!("Error running {}: {}", &*script.path, e);
+        },
+    }
+}
 
-    let arguments = &["-c", &*command.path];
+fn run_script(script: Script, pos: usize, msg_tx: chan::Sender<Message>, interrupt_rx: mpsc::Receiver<()>) {
+    let shell = script.shell();
+    let arguments = &["-c", &*script.path];
 
-    if let Some(true) = command.is_static {
-        let output = Command::new(&shell).args(arguments).output().expect(&format!("Failed to run {}", &command.path));
-        let _ = sender.send(Update { position: pos, message: String::from_utf8_lossy(&output.stdout).trim_matches(&['\r', '\n'] as &[_]).to_owned(), });
-    } else {
-        match command.reload {
-            Some(time) => {
-                let time = (time * 1000f64) as u64;
-                loop {
-                    let output = Command::new(&shell).args(arguments).output().expect(&format!("Failed to run {}", &command.path));
-                    let _ = sender.send(Update { position: pos, message: String::from_utf8_lossy(&output.stdout).trim_matches(&['\r', '\n'] as &[_]).to_owned(), });
-                    sleep(Duration::from_millis(time));
+    match script.reload {
+        Some(time) => {
+            let time = (time * 1000f64) as u64;
+            'cmd_loop1: loop {
+                let output = Command::new(&shell).args(arguments).output().expect(&format!("Failed to run {}", &script.path));
+                if let Ok(()) = interrupt_rx.try_recv() {
+                    break 'cmd_loop1;
                 }
-            },
-            None => {
-                loop {
-                    let output = Command::new(&shell).args(arguments).stdout(Stdio::piped()).spawn().expect(&format!("Failed to run {}", &command.path));
-                    let reader = BufReader::new(output.stdout.unwrap());
-                    for line in reader.lines().flat_map(Result::ok) {
-                        let _ = sender.send(Update { position: pos, message: line.trim_matches(&['\r', '\n'] as &[_]).to_owned(), });
+                let _ = msg_tx.send(Message::Update(Update { position: pos, message: String::from_utf8_lossy(&output.stdout).trim_matches(&['\r', '\n'] as &[_]).to_owned(), }));
+                sleep(Duration::from_millis(time));
+            }
+        },
+        None => {
+            'cmd_loop2: loop {
+                let output = Command::new(&shell).args(arguments).stdout(Stdio::piped()).spawn().expect(&format!("Failed to run {}", &script.path));
+                let reader = BufReader::new(output.stdout.unwrap());
+                for line in reader.lines().flat_map(Result::ok) {
+                    if let Ok(()) = interrupt_rx.try_recv() {
+                        break 'cmd_loop2;
                     }
-                    sleep(Duration::from_millis(10));
+                    let _ = msg_tx.send(Message::Update(Update { position: pos, message: line.trim_matches(&['\r', '\n'] as &[_]).to_owned(), }));
                 }
-            },
-        }
+                sleep(Duration::from_millis(10));
+            }
+        },
     }
 }
 
 fn main() {
+    let sig_rx = chan_signal::notify(&[Signal::USR1]).into_iter().map(|s| Message::Signal(s));
+    let (sender, receiver) = chan::async::<Message>();
+    let tx = sender.clone();
+    thread::spawn(move || {
+        for signal in sig_rx {
+            tx.send(signal);
+        }
+    });
+
+
     let matches = App::new("admiral")
         .version(option_env!("CARGO_PKG_VERSION").unwrap_or("unknown version"))
         .arg(Arg::with_name("config")
@@ -116,7 +140,7 @@ fn main() {
         },
     }
 
-    let scripts = match toml::from_str::<ConfigFile>(&buffer) {
+    let mut scripts = match toml::from_str::<ConfigFile>(&buffer) {
         Ok(val) => val.scripts,
         Err(e) => {
             eprintln!("Syntax error in configuration file: {}", e);
@@ -124,41 +148,67 @@ fn main() {
         }
     };
 
-    let (sender, receiver) = channel::<Update>();
+    'main_loop: loop {
+        let mut message_vec: Vec<String> = Vec::new();
+        let mut print_message = String::new();
+        let mut position: usize = 0;
+        let _ = env::set_current_dir(&config_root);
 
-    let mut message_vec: Vec<String> = Vec::new();
-    let mut print_message = String::new();
-    let mut position: usize = 0;
-    let _ = env::set_current_dir(&config_root);
+        const THREAD_NUM: usize = 1;
+        let pool = ThreadPool::new(THREAD_NUM);
+        let mut interrupts = Vec::new();
 
-    const THREAD_NUM: usize = 1;
-    let pool = ThreadPool::new(THREAD_NUM);
+        for script in &scripts {
+            let script = script.to_owned();
+            let tx = sender.clone();
+            let (int_tx, int_rx) = mpsc::channel::<()>();
+            interrupts.push(int_tx);
 
-    for script in scripts {
-        let tx = sender.clone();
+            if let Some(true) = script.is_static {
+                pool.execute(move || {
+                    run_static_script(script, position, tx, int_rx);
+                });
+            } else {
+                thread::spawn(move || {
+                    run_script(script, position, tx, int_rx);
+                });
+            }
 
-        if let Some(true) = script.is_static {
-            pool.execute(move || {
-                run_command(script, position, tx);
-            });
-        } else {
-            let _ = thread::spawn(move || {
-                run_command(script, position, tx);
-            });
+            position += 1;
+            message_vec.push(String::new());
         }
 
-        position += 1;
-        message_vec.push(String::new());
-    }
+        'msg_loop: for message in receiver.iter() {
+            match message {
+                Message::Update(line) => {
+                    message_vec[line.position] = line.message;
+                    let new_message_string = message_vec.iter().cloned().collect::<String>();
 
-    for line in receiver.iter() {
-        message_vec[line.position] = line.message;
-        let new_message_string = message_vec.iter().cloned().collect::<String>();
+                    if print_message != new_message_string {
+                        print_message = new_message_string;
+                        sleep(Duration::from_millis(5));
+                        println!("{}", print_message);
+                    }
+                },
+                Message::Signal(_) => {
+                    break 'msg_loop;
+                },
+            }
+        }
 
-        if print_message != new_message_string {
-            print_message = new_message_string;
-            sleep(Duration::from_millis(5));
-            println!("{}", print_message);
+        for tx in interrupts {
+            let _ = tx.send(());
+        }
+
+        let mut buffer = String::new();
+        if let Ok(mut file) = File::open(&config_file) {
+            if let Err(_) = file.read_to_string(&mut buffer) {
+                continue 'main_loop;
+            }
+        }
+
+        if let Ok(val) = toml::from_str::<ConfigFile>(&buffer) {
+            scripts = val.scripts;
         }
     }
 }
