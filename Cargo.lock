@@ -1,6 +1,6 @@
 [[package]]
 name = "admiral"
-version = "1.1.0-beta"
+version = "1.1.0"
 dependencies = [
  "chan 0.1.20 (registry+https://github.com/rust-lang/crates.io-index)",
  "chan-signal 0.3.1 (registry+https://github.com/rust-lang/crates.io-index)",
