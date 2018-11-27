@@ -1,23 +1,35 @@
+#[macro_use]
+extern crate serde_derive;
+
 extern crate toml;
+
+extern crate chan;
+extern crate chan_signal;
+use chan_signal::Signal;
+
 extern crate clap;
+use clap::{App, Arg};
+
 extern crate threadpool;
+use threadpool::ThreadPool;
 
 use std::process::{Command, exit, Stdio};
-use std::io::{stderr, Write, Read, BufRead, BufReader};
-use std::sync::mpsc::{channel, Sender};
+use std::io::{Read, BufRead, BufReader};
 use std::fs::File;
 use std::path::PathBuf;
 use std::thread::{self, sleep};
+use std::sync::mpsc;
 use std::time::Duration;
 use std::env;
-use std::ffi::OsStr;
 
-use clap::{App, Arg};
-use threadpool::ThreadPool;
-use toml::Value;
-
-mod command;
 mod config;
+use config::{ConfigFile, Script};
+
+#[derive(Debug)]
+enum Message {
+    Update(Update),
+    Signal(Signal),
+}
 
 #[derive(Debug)]
 struct Update {
@@ -25,37 +37,65 @@ struct Update {
     message: String,
 }
 
-fn run_command(command: command::Command, sender: Sender<Update>) {
-    let shell = OsStr::new(&command.shell);
-    let arguments = &["-c", &*command.path];
+fn run_static_script(script: Script, pos: usize, msg_tx: chan::Sender<Message>, interrupt_rx: mpsc::Receiver<()>) {
+    let shell = script.shell();
+    let arguments = &["-c", &*script.path];
 
-    if command.is_static {
-        let output = Command::new(&shell).args(arguments).output().expect(&format!("Failed to run {}", &command.path));
-        let _ = sender.send(Update { position: command.position, message: String::from_utf8_lossy(&output.stdout).trim_matches(&['\r', '\n'] as &[_]).to_owned(), });
-    } else {
-        match command.reload {
-            Some(time) => {
-                loop {
-                    let output = Command::new(&shell).args(arguments).output().expect(&format!("Failed to run {}", &command.path));
-                    let _ = sender.send(Update { position: command.position, message: String::from_utf8_lossy(&output.stdout).trim_matches(&['\r', '\n'] as &[_]).to_owned(), });
-                    sleep(Duration::from_millis(time));
+    match Command::new(&shell).args(arguments).output() {
+        Ok(output) => {
+            if let Err(_) = interrupt_rx.try_recv() {
+                let _ = msg_tx.send(Message::Update(Update { position: pos, message: String::from_utf8_lossy(&output.stdout).trim_matches(&['\r', '\n'] as &[_]).to_owned(), }));
+            }
+        },
+        Err(e) => {
+            eprintln!("Error running {}: {}", &*script.path, e);
+        },
+    }
+}
+
+fn run_script(script: Script, pos: usize, msg_tx: chan::Sender<Message>, interrupt_rx: mpsc::Receiver<()>) {
+    let shell = script.shell();
+    let arguments = &["-c", &*script.path];
+
+    match script.reload {
+        Some(time) => {
+            let time = (time * 1000f64) as u64;
+            'cmd_loop1: loop {
+                let output = Command::new(&shell).args(arguments).output().expect(&format!("Failed to run {}", &script.path));
+                if let Ok(()) = interrupt_rx.try_recv() {
+                    break 'cmd_loop1;
                 }
-            },
-            None => {
-                loop {
-                    let output = Command::new(&shell).args(arguments).stdout(Stdio::piped()).spawn().expect(&format!("Failed to run {}", &command.path));
-                    let reader = BufReader::new(output.stdout.unwrap());
-                    for line in reader.lines().flat_map(Result::ok) {
-                        let _ = sender.send(Update { position: command.position, message: line.trim_matches(&['\r', '\n'] as &[_]).to_owned(), });
+                let _ = msg_tx.send(Message::Update(Update { position: pos, message: String::from_utf8_lossy(&output.stdout).trim_matches(&['\r', '\n'] as &[_]).to_owned(), }));
+                sleep(Duration::from_millis(time));
+            }
+        },
+        None => {
+            'cmd_loop2: loop {
+                let output = Command::new(&shell).args(arguments).stdout(Stdio::piped()).spawn().expect(&format!("Failed to run {}", &script.path));
+                let reader = BufReader::new(output.stdout.unwrap());
+                for line in reader.lines().flat_map(Result::ok) {
+                    if let Ok(()) = interrupt_rx.try_recv() {
+                        break 'cmd_loop2;
                     }
-                    sleep(Duration::from_millis(10));
+                    let _ = msg_tx.send(Message::Update(Update { position: pos, message: line.trim_matches(&['\r', '\n'] as &[_]).to_owned(), }));
                 }
-            },
-        }
+                sleep(Duration::from_millis(10));
+            }
+        },
     }
 }
 
 fn main() {
+    let sig_rx = chan_signal::notify(&[Signal::USR1]).into_iter().map(|s| Message::Signal(s));
+    let (sender, receiver) = chan::async::<Message>();
+    let tx = sender.clone();
+    thread::spawn(move || {
+        for signal in sig_rx {
+            tx.send(signal);
+        }
+    });
+
+
     let matches = App::new("admiral")
         .version(option_env!("CARGO_PKG_VERSION").unwrap_or("unknown version"))
         .arg(Arg::with_name("config")
@@ -72,7 +112,7 @@ fn main() {
             match config::get_config_file() {
                 Some(file) => file,
                 None => {
-                    let _ = stderr().write("Configuration file not found\n".as_bytes());
+                    eprintln!("Configuration file not found");
                     exit(1);
                 },
             }
@@ -80,7 +120,7 @@ fn main() {
     };
 
     if ! config_file.is_file() {
-        let _ = writeln!(stderr(), "Invalid configuration file specified");
+        eprintln!("Configuration file must be regular file");
         exit(1);
     }
 
@@ -89,81 +129,86 @@ fn main() {
     let mut buffer = String::new();
     match File::open(&config_file) {
         Ok(mut file) => {
-            let _ = file.read_to_string(&mut buffer).expect("Could not read configuration file");
+            if let Err(e) = file.read_to_string(&mut buffer) {
+                eprintln!("Could not read configuration file: {}", e);
+                exit(1);
+            }
         },
         Err(e) => {
-            let _ = writeln!(stderr(), "Error reading configuration file: {}", e);
+            eprintln!("Error reading configuration file: {}", e);
+            exit(1);
         },
     }
 
-    let config_toml = match (&buffer).parse::<Value>() {
-        Ok(val) => val,
-        Err(_) => {
-            panic!("Syntax error in configuration file");
+    let mut scripts = match toml::from_str::<ConfigFile>(&buffer) {
+        Ok(val) => val.scripts,
+        Err(e) => {
+            eprintln!("Syntax error in configuration file: {}", e);
+            exit(1);
         }
     };
 
-    let admiral_config = config_toml.get("admiral").expect("No [admiral] section found");
-    let items = admiral_config
-        .as_table().expect("admiral section is not valid TOML table")
-        .get("items").expect("[admiral] section does not have an \"items\" section")
-        .as_array().expect("items section is not valid TOML array")
-        .iter().map(|x| x.as_str().unwrap()).collect::<Vec<_>>();
+    'main_loop: loop {
+        let mut message_vec: Vec<String> = Vec::new();
+        let mut print_message = String::new();
+        let mut position: usize = 0;
+        let _ = env::set_current_dir(&config_root);
 
-    let (sender, receiver) = channel::<Update>();
+        const THREAD_NUM: usize = 1;
+        let pool = ThreadPool::new(THREAD_NUM);
+        let mut interrupts = Vec::new();
 
-    let mut message_vec: Vec<String> = Vec::new();
-    let mut print_message = String::new();
-    let mut position: usize = 0;
-    let _ = env::set_current_dir(&config_root);
+        for script in &scripts {
+            let script = script.to_owned();
+            let tx = sender.clone();
+            let (int_tx, int_rx) = mpsc::channel::<()>();
+            interrupts.push(int_tx);
 
-    const THREAD_NUM: usize = 1; // Issue asked for a single worker thread.
-    let pool = ThreadPool::new(THREAD_NUM);
+            if let Some(true) = script.is_static {
+                pool.execute(move || {
+                    run_static_script(script, position, tx, int_rx);
+                });
+            } else {
+                thread::spawn(move || {
+                    run_script(script, position, tx, int_rx);
+                });
+            }
 
-    for value in items {
-        match config_toml.get(value) {
-            Some(script) => {
-                let table = match script.as_table() {
-                    Some(table) => table.to_owned(),
-                    None => {
-                        let _ = writeln!(stderr(), "No {} found", value);
-                        continue;
-                    },
-                };
-
-                let value = value.to_owned();
-                let clone = sender.clone();
-
-                let command = command::get_command(&value, &table, position);
-
-                if command.is_static {
-                    pool.execute(move || {
-                        run_command(command, clone);
-                    });
-                } else {
-                    let _ = thread::spawn(move || {
-                        run_command(command, clone);
-                    });
-                }
-
-                position += 1;
-                message_vec.push(String::new());
-            },
-            None => {
-                let _ = writeln!(stderr(), "No {} found.", value);
-                continue;
-            },
+            position += 1;
+            message_vec.push(String::new());
         }
-    }
 
-    for line in receiver.iter() {
-        message_vec[line.position] = line.message;
-        let new_message_string = message_vec.iter().cloned().collect::<String>();
+        'msg_loop: for message in receiver.iter() {
+            match message {
+                Message::Update(line) => {
+                    message_vec[line.position] = line.message;
+                    let new_message_string = message_vec.iter().cloned().collect::<String>();
 
-        if print_message != new_message_string {
-            print_message = new_message_string;
-            sleep(Duration::from_millis(5));
-            println!("{}", print_message);
+                    if print_message != new_message_string {
+                        print_message = new_message_string;
+                        sleep(Duration::from_millis(5));
+                        println!("{}", print_message);
+                    }
+                },
+                Message::Signal(_) => {
+                    break 'msg_loop;
+                },
+            }
+        }
+
+        for tx in interrupts {
+            let _ = tx.send(());
+        }
+
+        let mut buffer = String::new();
+        if let Ok(mut file) = File::open(&config_file) {
+            if let Err(_) = file.read_to_string(&mut buffer) {
+                continue 'main_loop;
+            }
+        }
+
+        if let Ok(val) = toml::from_str::<ConfigFile>(&buffer) {
+            scripts = val.scripts;
         }
     }
 }
