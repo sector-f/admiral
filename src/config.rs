@@ -19,31 +19,23 @@ impl<'de> Deserialize<'de> for ConfigFile {
         D: Deserializer<'de>,
     {
         let value = Value::deserialize(d)?;
-        match Value::try_into::<Table>(value) {
-            Ok(mut table) => match table.remove("admiral") {
-                Some(admiral) => match Value::try_into::<ItemList>(admiral) {
-                    Ok(admiral) => {
-                        let mut scripts = Vec::new();
-                        for item in admiral.items {
-                            if let Some(v) = table.get(&item) {
-                                match Value::try_into::<Script>(v.to_owned()) {
-                                    Ok(s) => {
-                                        scripts.push(s);
-                                    }
-                                    Err(e) => {
-                                        return Err(Error::custom(e.to_string()));
-                                    }
-                                }
-                            }
-                        }
-                        Ok(ConfigFile { scripts: scripts })
-                    }
-                    Err(e) => Err(Error::custom(e.to_string())),
-                },
-                None => Err(Error::custom("missing \"admiral\" section".to_string())),
-            },
-            Err(e) => Err(Error::custom(e.to_string())),
+        let mut table =
+            Value::try_into::<Table>(value).map_err(|e| Error::custom(e.to_string()))?;
+        let admiral = table
+            .remove("admiral")
+            .ok_or(Error::custom("missing \"admiral\" section".to_string()))?;
+        let admiral =
+            Value::try_into::<ItemList>(admiral).map_err(|e| Error::custom(e.to_string()))?;
+
+        let mut scripts = Vec::new();
+        for item in admiral.items {
+            if let Some(v) = table.get(&item) {
+                let s = Value::try_into::<Script>(v.to_owned())
+                    .map_err(|e| Error::custom(e.to_string()))?;
+                scripts.push(s);
+            }
         }
+        Ok(ConfigFile { scripts: scripts })
     }
 }
 
@@ -63,17 +55,14 @@ pub struct Script {
 
 impl Script {
     pub fn shell(&self) -> PathBuf {
-        match self.shell {
-            Some(ref shell) => PathBuf::from(&shell),
-            None => match env::var_os("SHELL") {
-                Some(sh) => PathBuf::from(&sh),
-                None => PathBuf::from("/bin/sh"),
-            },
+        if let Some(ref shell) = self.shell {
+            return PathBuf::from(&shell);
         }
+
+        PathBuf::from(env::var("SHELL").unwrap_or("/bin/sh".into()))
     }
 }
 
-#[allow(dead_code)]
 pub fn get_config_file() -> Option<PathBuf> {
     let xdg_path = env::var("XDG_CONFIG_HOME")
         .ok()
@@ -93,7 +82,6 @@ pub fn get_config_file() -> Option<PathBuf> {
     xdg_path.or(dot_home)
 }
 
-#[allow(dead_code)]
 fn if_readable(path: PathBuf) -> Option<PathBuf> {
     if path.exists() {
         Some(path)
