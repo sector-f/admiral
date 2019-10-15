@@ -13,14 +13,14 @@ use clap::{App, Arg};
 extern crate threadpool;
 use threadpool::ThreadPool;
 
-use std::process::{Command, exit, Stdio};
-use std::io::{Read, BufRead, BufReader};
-use std::fs::File;
-use std::path::PathBuf;
-use std::thread::{self, sleep};
-use std::sync::mpsc;
-use std::time::Duration;
 use std::env;
+use std::fs::File;
+use std::io::{BufRead, BufReader, Read};
+use std::path::PathBuf;
+use std::process::{exit, Command, Stdio};
+use std::sync::mpsc;
+use std::thread::{self, sleep};
+use std::time::Duration;
 
 mod config;
 use config::{ConfigFile, Script};
@@ -37,23 +37,38 @@ struct Update {
     message: String,
 }
 
-fn run_static_script(script: Script, pos: usize, msg_tx: chan::Sender<Message>, interrupt_rx: mpsc::Receiver<()>) {
+fn run_static_script(
+    script: Script,
+    pos: usize,
+    msg_tx: chan::Sender<Message>,
+    interrupt_rx: mpsc::Receiver<()>,
+) {
     let shell = script.shell();
-    let arguments = &["-c", &*script.path];
+    let arguments = &["-c", &script.path];
+    let output = Command::new(&shell).args(arguments).output();
 
-    match Command::new(&shell).args(arguments).output() {
-        Ok(output) => {
-            if let Err(_) = interrupt_rx.try_recv() {
-                let _ = msg_tx.send(Message::Update(Update { position: pos, message: String::from_utf8_lossy(&output.stdout).trim_matches(&['\r', '\n'] as &[_]).to_owned(), }));
-            }
-        },
-        Err(e) => {
-            eprintln!("Error running {}: {}", &*script.path, e);
-        },
+    if let Ok(output) = output {
+        if let Err(_) = interrupt_rx.try_recv() {
+            let _ = msg_tx.send(Message::Update(Update {
+                position: pos,
+                message: String::from_utf8_lossy(&output.stdout)
+                    .trim_matches(&['\r', '\n'] as &[_])
+                    .to_owned(),
+            }));
+        }
+    } else if let Err(e) = output {
+        eprintln!("Error running {}: {}", &script.path, e);
+    } else {
+        unreachable!();
     }
 }
 
-fn run_script(script: Script, pos: usize, msg_tx: chan::Sender<Message>, interrupt_rx: mpsc::Receiver<()>) {
+fn run_script(
+    script: Script,
+    pos: usize,
+    msg_tx: chan::Sender<Message>,
+    interrupt_rx: mpsc::Receiver<()>,
+) {
     let shell = script.shell();
     let arguments = &["-c", &*script.path];
 
@@ -61,32 +76,47 @@ fn run_script(script: Script, pos: usize, msg_tx: chan::Sender<Message>, interru
         Some(time) => {
             let time = (time * 1000f64) as u64;
             'cmd_loop1: loop {
-                let output = Command::new(&shell).args(arguments).output().expect(&format!("Failed to run {}", &script.path));
+                let output = Command::new(&shell)
+                    .args(arguments)
+                    .output()
+                    .expect(&format!("Failed to run {}", &script.path));
                 if let Ok(()) = interrupt_rx.try_recv() {
                     break 'cmd_loop1;
                 }
-                let _ = msg_tx.send(Message::Update(Update { position: pos, message: String::from_utf8_lossy(&output.stdout).trim_matches(&['\r', '\n'] as &[_]).to_owned(), }));
+                let _ = msg_tx.send(Message::Update(Update {
+                    position: pos,
+                    message: String::from_utf8_lossy(&output.stdout)
+                        .trim_matches(&['\r', '\n'] as &[_])
+                        .to_owned(),
+                }));
                 sleep(Duration::from_millis(time));
             }
-        },
-        None => {
-            'cmd_loop2: loop {
-                let output = Command::new(&shell).args(arguments).stdout(Stdio::piped()).spawn().expect(&format!("Failed to run {}", &script.path));
-                let reader = BufReader::new(output.stdout.unwrap());
-                for line in reader.lines().flat_map(Result::ok) {
-                    if let Ok(()) = interrupt_rx.try_recv() {
-                        break 'cmd_loop2;
-                    }
-                    let _ = msg_tx.send(Message::Update(Update { position: pos, message: line.trim_matches(&['\r', '\n'] as &[_]).to_owned(), }));
+        }
+        None => 'cmd_loop2: loop {
+            let output = Command::new(&shell)
+                .args(arguments)
+                .stdout(Stdio::piped())
+                .spawn()
+                .expect(&format!("Failed to run {}", &script.path));
+            let reader = BufReader::new(output.stdout.unwrap());
+            for line in reader.lines().flat_map(Result::ok) {
+                if let Ok(()) = interrupt_rx.try_recv() {
+                    break 'cmd_loop2;
                 }
-                sleep(Duration::from_millis(10));
+                let _ = msg_tx.send(Message::Update(Update {
+                    position: pos,
+                    message: line.trim_matches(&['\r', '\n'] as &[_]).to_owned(),
+                }));
             }
+            sleep(Duration::from_millis(10));
         },
     }
 }
 
 fn main() {
-    let sig_rx = chan_signal::notify(&[Signal::USR1]).into_iter().map(|s| Message::Signal(s));
+    let sig_rx = chan_signal::notify(&[Signal::USR1])
+        .into_iter()
+        .map(|s| Message::Signal(s));
     let (sender, receiver) = chan::async::<Message>();
     let tx = sender.clone();
     thread::spawn(move || {
@@ -95,31 +125,30 @@ fn main() {
         }
     });
 
-
     let matches = App::new("admiral")
         .version(option_env!("CARGO_PKG_VERSION").unwrap_or("unknown version"))
-        .arg(Arg::with_name("config")
-             .help("Specify alternate config file")
-             .short("c")
-             .long("config-file")
-             .value_name("FILE")
-             .takes_value(true))
+        .arg(
+            Arg::with_name("config")
+                .help("Specify alternate config file")
+                .short("c")
+                .long("config-file")
+                .value_name("FILE")
+                .takes_value(true),
+        )
         .get_matches();
 
     let config_file = match matches.value_of("config") {
         Some(file) => PathBuf::from(file),
-        None => {
-            match config::get_config_file() {
-                Some(file) => file,
-                None => {
-                    eprintln!("Configuration file not found");
-                    exit(1);
-                },
+        None => match config::get_config_file() {
+            Some(file) => file,
+            None => {
+                eprintln!("Configuration file not found");
+                exit(1);
             }
-        }
+        },
     };
 
-    if ! config_file.is_file() {
+    if !config_file.is_file() {
         eprintln!("Configuration file must be regular file");
         exit(1);
     }
@@ -133,11 +162,11 @@ fn main() {
                 eprintln!("Could not read configuration file: {}", e);
                 exit(1);
             }
-        },
+        }
         Err(e) => {
             eprintln!("Error reading configuration file: {}", e);
             exit(1);
-        },
+        }
     }
 
     let mut scripts = match toml::from_str::<ConfigFile>(&buffer) {
@@ -189,10 +218,10 @@ fn main() {
                         sleep(Duration::from_millis(5));
                         println!("{}", print_message);
                     }
-                },
+                }
                 Message::Signal(_) => {
                     break 'msg_loop;
-                },
+                }
             }
         }
 
