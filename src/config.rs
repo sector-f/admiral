@@ -35,7 +35,7 @@ impl<'de> Deserialize<'de> for ConfigFile {
                 scripts.push(s);
             }
         }
-        Ok(ConfigFile { scripts: scripts })
+        Ok(ConfigFile { scripts })
     }
 }
 
