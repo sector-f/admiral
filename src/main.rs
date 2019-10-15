@@ -44,22 +44,22 @@ fn run_static_script(
     interrupt_rx: mpsc::Receiver<()>,
 ) {
     let shell = script.shell();
-    let arguments = &["-c", &*script.path];
+    let arguments = &["-c", &script.path];
+    let output = Command::new(&shell).args(arguments).output();
 
-    match Command::new(&shell).args(arguments).output() {
-        Ok(output) => {
-            if let Err(_) = interrupt_rx.try_recv() {
-                let _ = msg_tx.send(Message::Update(Update {
-                    position: pos,
-                    message: String::from_utf8_lossy(&output.stdout)
-                        .trim_matches(&['\r', '\n'] as &[_])
-                        .to_owned(),
-                }));
-            }
+    if let Ok(output) = output {
+        if let Err(_) = interrupt_rx.try_recv() {
+            let _ = msg_tx.send(Message::Update(Update {
+                position: pos,
+                message: String::from_utf8_lossy(&output.stdout)
+                    .trim_matches(&['\r', '\n'] as &[_])
+                    .to_owned(),
+            }));
         }
-        Err(e) => {
-            eprintln!("Error running {}: {}", &*script.path, e);
-        }
+    } else if let Err(e) = output {
+        eprintln!("Error running {}: {}", &script.path, e);
+    } else {
+        unreachable!();
     }
 }
 
