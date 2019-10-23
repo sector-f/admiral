@@ -106,6 +106,18 @@ like `/usr/local/bin/` or `~/.local/bin/`
 You may then copy the provided `admiral.d/` directory to `~/.config/`
 (or your `$XDG_CONFIG_HOME` directory, if you have that environment variable set).
 
+#### Alternative installation
+
+1. Install the binary with
+   `cargo install --git https://github.com/sector-f/admiral`.
+
+This will create an `admiral` binary in `~/.cargo/bin/admiral`, which should
+already be in your `$PATH`.
+
+You may then create an `admiral.d` directory in your preferred config
+directory as above, and create the admiral.toml config file inside it (or copy
+the file from this repository).
+
 ## Configuration
 
 Configuration is done with an `admiral.toml` file. This file is looked for in
